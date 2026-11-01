@@ -57,7 +57,7 @@ v2–v9 先按各自原规则严格解码，再补空见闻与选择；只有已
 
 **世界生成的一处修正。** 接线时发现普通物资箱会落在配电箱锚点上：种子 1–300 中有 27 个种子的普通箱离锚点不到 40px（种子 42 的 `crate-8` 正好在 (29,40)），玩家站到那里按 E，第一次会去检查总闸而不是开箱；`test:loot` 的开箱步骤因此失败。市场片段要求“容器和观察点不重叠”，原保护只覆盖工具柜。现把 `protectMarketCabinet` 改为 [market-world.ts](../../src/market-world.ts) 的 `protectMarketAnchors`：工具柜和配电箱两个圆（各 43px）内的初始箱子、散落物和普通敌人都按原规则迁到同图最近的合法落点，身份与物品不变，固定岗位仍在圆外。只影响新部署；已存行动不重新生成。[market-story.test.ts](../../tests/market-story.test.ts) 的部署检查加上配电箱距离并纳入种子 42；还原生成代码时该断言在种子 1 即失败（负对照）。前端的距离／稳定 ID 仲裁保留，用于尸体等后来出现在旁边的目标。
 
-**前端验证。** [market-story-view-test.mjs](../../scripts/market-story-view-test.mjs)（`pnpm test:market-view`，CI batch-3）11 步：院子对话与关闭不写入、报告／暂不说／告诉与值班册、写入失败保留话题和重试、经对话交付后回到回应且只发一次奖励、两个出击入口都进 `coast-story-v1`、静音下三处线索的字幕与见闻、危险消息优先与过时丢弃、刷新恢复不重播、失焦与超时释放面板、手机横屏触控与字幕不压危险信息、1920×1080 截图。两条路线的自然计时机器人见 [market-route-play.mjs](../../scripts/market-route-play.mjs)；结果和仍需真人的项目记录在 PR。
+**前端验证。** [market-story-view-test.mjs](../../scripts/market-story-view-test.mjs)（`pnpm test:market-view`，CI batch-3）11 步：院子对话与关闭不写入、报告／暂不说／告诉与值班册、写入失败保留话题和重试、经对话交付后回到回应且只发一次奖励、两个出击入口都进 `coast-story-v1`、静音下三处线索的字幕与见闻、危险消息优先与过时丢弃、刷新恢复不重播、失焦与超时释放面板、手机横屏触控与字幕不压危险信息、1920×1080 截图。两条路线的自然计时机器人见 [market-route-play.mjs](../../scripts/market-route-play.mjs)；结果和仍需真人的项目记录在 PR。默认出击改为市场世界后，`test:browser` 与 `test:loot` 的“60 条原始投放守恒”期望改由出击前存档的 `marketRunConfig` 计算（未放宽），raid-default 与 coast-sample 的世界 ID 断言改为 `coast-story-v1`；短屏触屏上「见闻」按钮多占 52px，任务列表上限相应减少，`test:qol` 的“展开任务卡不压触屏按钮”保持通过。
 
 ## 验证及未验
 

@@ -208,6 +208,8 @@ html.mobile[data-coast-sample] #toast { bottom: calc(76px + var(--safe-bottom, 0
 @media (max-height: 480px) { .coast-sample.touch .cs-toast { top: auto; bottom: 80px; } }
 /* On short phones an opened task list scrolls instead of running into the touch buttons (the 40 px toggle above it included). */
 @media (max-height: 480px) { .coast-sample.touch .cs-info [data-quest-list] { max-height: calc(100vh - 192px); overflow-y: auto; } }
+/* The 见闻 button (#83) adds one 48 px row and its 4 px gap above the task card: the list gives that height back. */
+@media (max-height: 480px) { .coast-sample.touch .cs-info:has(> [data-recall]:not([hidden])) [data-quest-list] { max-height: calc(100vh - 244px); } }
 .cs-info small { color: var(--cs-muted); }
 @media (max-height: 480px) {
   .cs-radio { top: var(--radio-t, 30px); font-family: "Microsoft YaHei", sans-serif; font-size: 12px; line-height: 16px; }
