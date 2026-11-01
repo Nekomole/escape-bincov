@@ -1,0 +1,413 @@
+{
+  "sha256": "5e8567b27c3e8407a5165495384bef95a1bc4f6a3d270e1ee63e66ececd39d21",
+  "browser": "156.0.8078.74",
+  "touch": true,
+  "checks": [
+    {
+      "name": "932x430 S03c stair-label-under-an-enemy-on-uncovered-floor",
+      "detail": {
+        "at": {
+          "x": 560,
+          "y": 318
+        },
+        "before": {
+          "hidden": false,
+          "width": 72,
+          "height": 20
+        },
+        "clip": {
+          "x": 522,
+          "y": 178,
+          "width": 76,
+          "height": 66,
+          "shown": true,
+          "hidden": true,
+          "label": {
+            "x": 560,
+            "y": 294
+          }
+        },
+        "scale": 1,
+        "permissions": {
+          "hidden": {
+            "hidden": false,
+            "shown": false
+          },
+          "offscreen": {
+            "hidden": false,
+            "shown": true
+          },
+          "absent": {
+            "hidden": false,
+            "shown": false
+          },
+          "visible": {
+            "hidden": true,
+            "shown": true
+          },
+          "unchangedPermissions": true
+        },
+        "pixels": 5016,
+        "body": 459,
+        "covered": 0,
+        "blended": 0,
+        "guide": 1440,
+        "overlap": 252,
+        "after": {
+          "hidden": false,
+          "width": 72
+        }
+      },
+      "status": "passed"
+    },
+    {
+      "name": "932x430 S07 stair-label-stays-beside-its-own-stairs",
+      "status": "failed",
+      "error": "AssertionError [ERR_ASSERTION]: coast (560, 336) resident-up: the label stays beside its stairs (56 px away)\n    at file:///C:/bincov/.claude/worktrees/sad-tharp-f6c48e/scripts/issue26-spatial-test.mjs:615:16\n    at async check (file:///C:/bincov/.claude/worktrees/sad-tharp-f6c48e/scripts/issue26-spatial-test.mjs:57:22)\n    at async file:///C:/bincov/.claude/worktrees/sad-tharp-f6c48e/scripts/issue26-spatial-test.mjs:562:5"
+    }
+  ],
+  "errors": [],
+  "occlusion": [
+    {
+      "size": "932x430",
+      "check": "S03c",
+      "at": {
+        "x": 560,
+        "y": 318
+      },
+      "before": {
+        "hidden": false,
+        "width": 72,
+        "height": 20
+      },
+      "clip": {
+        "x": 522,
+        "y": 178,
+        "width": 76,
+        "height": 66,
+        "shown": true,
+        "hidden": true,
+        "label": {
+          "x": 560,
+          "y": 294
+        }
+      },
+      "scale": 1,
+      "permissions": {
+        "hidden": {
+          "hidden": false,
+          "shown": false
+        },
+        "offscreen": {
+          "hidden": false,
+          "shown": true
+        },
+        "absent": {
+          "hidden": false,
+          "shown": false
+        },
+        "visible": {
+          "hidden": true,
+          "shown": true
+        },
+        "unchangedPermissions": true
+      },
+      "pixels": 5016,
+      "body": 459,
+      "covered": 0,
+      "blended": 0,
+      "guide": 1440,
+      "overlap": 252
+    }
+  ],
+  "stairLabels": [
+    {
+      "size": "932x430",
+      "rows": [
+        {
+          "map": "coast",
+          "player": {
+            "x": 560,
+            "y": 336
+          },
+          "faced": "resident-east",
+          "prompt": {
+            "x": 471,
+            "y": 159,
+            "w": 38,
+            "h": 22
+          },
+          "labels": [
+            {
+              "id": "resident-up",
+              "shown": true,
+              "box": {
+                "x": 454,
+                "y": 245,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 56,
+              "homeOnPlayer": true,
+              "covers": {
+                "way": 8,
+                "glow": 8,
+                "mark resident-east": 6
+              }
+            },
+            {
+              "id": "resident-basement",
+              "shown": true,
+              "box": {
+                "x": 390,
+                "y": 195,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 6,
+              "homeOnPlayer": false,
+              "covers": {
+                "glow": 8
+              }
+            }
+          ]
+        },
+        {
+          "map": "coast",
+          "player": {
+            "x": 560,
+            "y": 308
+          },
+          "faced": "resident-east",
+          "prompt": {
+            "x": 471,
+            "y": 159,
+            "w": 38,
+            "h": 22
+          },
+          "labels": [
+            {
+              "id": "resident-up",
+              "shown": true,
+              "box": {
+                "x": 454,
+                "y": 245,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 28,
+              "homeOnPlayer": true,
+              "covers": {
+                "way": 16,
+                "glow": 8,
+                "mark resident-east": 14
+              }
+            },
+            {
+              "id": "resident-basement",
+              "shown": true,
+              "box": {
+                "x": 390,
+                "y": 223,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 6,
+              "homeOnPlayer": false,
+              "covers": {
+                "glow": 8
+              }
+            }
+          ]
+        },
+        {
+          "map": "coast",
+          "player": {
+            "x": 464,
+            "y": 336
+          },
+          "faced": "resident-west",
+          "prompt": {
+            "x": 445,
+            "y": 159,
+            "w": 38,
+            "h": 22
+          },
+          "labels": [
+            {
+              "id": "resident-up",
+              "shown": true,
+              "box": {
+                "x": 524,
+                "y": 195,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 6,
+              "homeOnPlayer": false,
+              "covers": {}
+            },
+            {
+              "id": "resident-basement",
+              "shown": true,
+              "box": {
+                "x": 460,
+                "y": 245,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 56,
+              "homeOnPlayer": true,
+              "covers": {
+                "way": 8,
+                "mark resident-east": 6
+              }
+            }
+          ]
+        },
+        {
+          "map": "coast",
+          "player": {
+            "x": 496,
+            "y": 336
+          },
+          "faced": "resident-east",
+          "prompt": {
+            "x": 423,
+            "y": 159,
+            "w": 38,
+            "h": 22
+          },
+          "labels": [
+            {
+              "id": "resident-up",
+              "shown": true,
+              "box": {
+                "x": 470,
+                "y": 195,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 6,
+              "homeOnPlayer": false,
+              "covers": {
+                "glow": 8
+              }
+            },
+            {
+              "id": "resident-basement",
+              "shown": true,
+              "box": {
+                "x": 406,
+                "y": 245,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 56,
+              "homeOnPlayer": true,
+              "covers": {
+                "way": 8,
+                "glow": 8,
+                "mark resident-east": 6
+              }
+            }
+          ]
+        },
+        {
+          "map": "resident-f2",
+          "player": {
+            "x": 272,
+            "y": 144
+          },
+          "faced": "resident-f2-east",
+          "prompt": {
+            "x": 527,
+            "y": 159,
+            "w": 38,
+            "h": 22
+          },
+          "labels": [
+            {
+              "id": "resident-down",
+              "shown": true,
+              "box": {
+                "x": 542,
+                "y": 245,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 56,
+              "homeOnPlayer": true,
+              "covers": {
+                "way": 12
+              }
+            }
+          ]
+        },
+        {
+          "map": "resident-f2",
+          "player": {
+            "x": 304,
+            "y": 144
+          },
+          "faced": "resident-storage",
+          "prompt": {
+            "x": 559,
+            "y": 176,
+            "w": 38,
+            "h": 22
+          },
+          "labels": [
+            {
+              "id": "resident-down",
+              "shown": true,
+              "box": {
+                "x": 542,
+                "y": 262,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 56,
+              "homeOnPlayer": true,
+              "covers": {
+                "way": 8
+              }
+            }
+          ]
+        },
+        {
+          "map": "resident-b1",
+          "player": {
+            "x": 272,
+            "y": 176
+          },
+          "faced": "resident-b1-east",
+          "prompt": {
+            "x": 527,
+            "y": 159,
+            "w": 38,
+            "h": 22
+          },
+          "labels": [
+            {
+              "id": "resident-back",
+              "shown": true,
+              "box": {
+                "x": 478,
+                "y": 163,
+                "w": 72,
+                "h": 20
+              },
+              "gap": 6,
+              "homeOnPlayer": false,
+              "covers": {
+                "glow": 6,
+                "prompt": 18
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
