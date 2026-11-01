@@ -17,7 +17,7 @@ import { BLOW_TIERS, REDUCED_KICK, ShotBlows, bloodDrops, blowTier, pushCamera, 
 import { lifecycle } from '../view-lifecycle/scope';
 import { Weather, type RoofArea, type WeatherKind } from './weather';
 import { Tide, paintWade } from './tide';
-import { isMall, knownDoor, knownStructurePoint, occupiedStructure, regionAtClosed, shownAt } from './structure-guide';
+import { isMall, knownDoor, knownStructurePoint, occupiedStructure, regionAtClosed, shownAt, stairLabelPlace, type LabelSide } from './structure-guide';
 import { paintMallGround } from './art/mall-ground';
 import { clearanceCuts, clearances, doorClearances, indoorArea, rowModes, sinkStep, sunkRows, topClear, underRule, wallCell, wallRule, type WallMode, type WallRule } from './wall-display';
 import { buildMall, mallDress, mallDressMap, type Link, type MallDress, type OccluderKind } from './mall-scene';
@@ -107,6 +107,8 @@ interface ActorGfx {
 
 const intersects = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const grow = (r: Rect, p: number): Rect => ({ x: r.x - p, y: r.y - p, w: r.w + p * 2, h: r.h + p * 2 });
+/** The 32x40 stairs picture on an entry's cell (paintStairs), drawn 8 px up into the cell above. */
+const stairArt = (e: { at: Point }): Rect => ({ x: Math.floor(e.at.x / 32) * 32, y: Math.floor(e.at.y / 32) * 32 - 8, w: 32, h: 40 });
 const corpseFacing = (a: ActorView): 1 | -1 => Math.cos((a.corpse?.angle ?? a.aim) + Math.PI) >= 0 ? 1 : -1;
 const dirOf = (a: number) => ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8;
 
@@ -169,8 +171,16 @@ export class CoastView {
    * The door the interaction prompt is about (#26 F07): a glow over its leaf at the door's own depth, so actors in front
    * stay on top, and the way through it on the floor under the actors (showFacedDoor). Made when a door is first faced.
    */
-  private facedDoor: { glow: Sprite; way: Sprite } | null = null;
+  private facedDoor: { glow: Sprite; way: Sprite; lit: Rect | null } | null = null;
   private stairLabels = new Map<string, Sprite>();
+  /**
+   * World boxes of the HUD text the host draws, from its last frame: each stair label's measured size (its font does not
+   * scale with the scene) and the interaction prompt, which a stair label keeps clear of.
+   */
+  hudLabelSizes = new Map<string, { w: number; h: number }>();
+  promptBox: Rect | null = null;
+  /** Lit pixel bounds of each door glow picture, by texture key. */
+  private glowBounds = new Map<string, Rect>();
   private actors = new Map<string, ActorGfx>();
   /** `from`: the drawn muzzle (chest plane) the tracer starts at; `seen`: where the head was first shown (its tail never
    *  reaches back past it, so a tracer leaving a hidden room does not point into it). */
@@ -381,7 +391,7 @@ export class CoastView {
     for (const layer of [this.groundLayer, this.flat, this.shadows, this.sorted, this.xray, this.overhead]) for (const c of layer.removeChildren()) c.destroy();
     this.fx?.clear(); this.shots.clear(); this.blowGroups.clear();
     for (const o of [...this.indoor, ...this.rising]) this.dropCrops(o.wall!);
-    this.occluders = []; this.indoor = []; this.rising = []; this.indoorOf = undefined; this.openingGuides = []; this.pendingChunks = []; this.doors.clear(); this.doorGuides.clear(); this.facedDoor = null; this.stairLabels.clear(); this.actors.clear(); this.bullets.clear(); this.crates.clear(); this.loot.clear(); this.muzzles = []; this.swings = [];
+    this.occluders = []; this.indoor = []; this.rising = []; this.indoorOf = undefined; this.openingGuides = []; this.pendingChunks = []; this.doors.clear(); this.doorGuides.clear(); this.facedDoor = null; this.stairLabels.clear(); this.promptBox = null; this.actors.clear(); this.bullets.clear(); this.crates.clear(); this.loot.clear(); this.muzzles = []; this.swings = [];
     this.debugG.clear();
   }
 
@@ -416,10 +426,11 @@ export class CoastView {
     for (const e of m.entries) {
       if (!mall?.flights.has(e.id)) {
         const s = new Sprite(this.tex.ensure(`stairs:${e.kind}`, () => paintStairs(e.kind === 'up' ? 'up' : 'down')));
-        s.position.set(Math.floor(e.at.x / 32) * 32, Math.floor(e.at.y / 32) * 32 - 8); this.groundLayer.addChild(s);
+        const art = stairArt(e); s.position.set(art.x, art.y); this.groundLayer.addChild(s);
       }
       // The label's place and size in the world; the host draws its text in the HUD's own pixel face (world-space text
-      // would be upscaled with the scene and blur), so the sprite itself is never rendered.
+      // would be upscaled with the scene and blur), so the sprite itself is never rendered. Its painted size stands in for
+      // the text until the host reports the measured box (hudLabelSizes), which then sets the sprite's size.
       const label = new Sprite(this.tex.ensure(`stairs-label:${e.label}`, () => paintStairLabel(e.label)));
       label.anchor.set(.5, 0); label.position.set(e.at.x, e.at.y + 22); label.visible = false; label.renderable = false;
       this.overhead.addChild(label); this.stairLabels.set(e.id, label);
@@ -1195,16 +1206,26 @@ export class CoastView {
       if (threats.some(t => intersects(t, box))) guide.visible = false;
     }
     if (!facing && this.facedDoor) this.facedDoor.glow.visible = this.facedDoor.way.visible = false;
-    for (const entry of map.entries) {
+    // Stair labels stay beside their own stairs (#26 F07/F11): under them, else over them, else at the side away from the
+    // player. Never on the player or the faced door's cue; clear of door marks, the prompt, other stairs and labels where a
+    // side allows. A label is never moved for an enemy: the host hides it while it covers one (S03c).
+    const cue = this.facedDoor, hard: Rect[] = [{ x: f.player.x - 14, y: f.player.y - 44, w: 28, h: 48 }];
+    if (cue?.way.visible) hard.push({ x: cue.way.x, y: cue.way.y, w: cue.way.texture.width, h: cue.way.texture.height });
+    if (cue?.glow.visible && cue.lit) hard.push(cue.lit);
+    // Door marks: each shown guide's floor square (paintDoorGuide), on the door's cell.
+    const arts = map.entries.map(stairArt), marks: Rect[] = [...this.doorGuides.values()].filter(g => g.visible).map(g => ({ x: g.x + 2, y: g.y + WALL_H + 2, w: 28, h: 28 }));
+    if (this.promptBox) marks.push(this.promptBox);
+    map.entries.forEach((entry, i) => {
       const label = this.stairLabels.get(entry.id)!;
       label.visible = knownStructurePoint(map, entry.at, f.revealed, occupied);
       // Mall floors: a drawn flight needs no label (the floor arrows lead to it); other stairs are named when near.
       if (this.mall && (this.mall.flights.has(entry.id) || Math.hypot(entry.at.x - f.player.x, entry.at.y - f.player.y) > MALL_LABEL_RANGE)) label.visible = false;
-      label.position.set(entry.at.x, entry.at.y + 22);
-      // Move below the player when needed; the interaction prompt already occupies the space above the head.
-      if (label.visible && intersects({ x: label.x - label.width / 2, y: label.y, w: label.width, h: label.height },
-        { x: f.player.x - 14, y: f.player.y - 44, w: 28, h: 48 })) label.y = f.player.y + 8;
-    }
+      const hud = this.hudLabelSizes.get(entry.id); if (hud) { label.width = hud.w; label.height = hud.h; }
+      const order: LabelSide[] = f.player.x < entry.at.x ? ['below', 'above', 'right', 'left'] : ['below', 'above', 'left', 'right'];
+      const box = stairLabelPlace(arts[i], label.width, label.height, order, hard, [...marks, ...arts.filter((_, j) => j !== i)]);
+      label.position.set(box.x + box.w / 2, box.y);
+      if (label.visible) marks.push(box);
+    });
   }
   /**
    * Marks the door being faced: its leaf (or doorway) glows, pulsing unless motion is reduced, and the cells either side
@@ -1213,16 +1234,19 @@ export class CoastView {
    * cover it like any floor and it shows nothing of the far side.
    */
   private showFacedDoor(door: MapDef['doors'][number], open: boolean) {
-    const cue = this.facedDoor ??= { glow: this.sorted.addChild(new Sprite()), way: this.flat.addChild(new Sprite()) };
+    const cue = this.facedDoor ??= { glow: this.sorted.addChild(new Sprite()), way: this.flat.addChild(new Sprite()), lit: null };
     const { glow, way } = cue, o = this.doors.get(door.id)!;
     way.texture = this.tex.ensure(`passage-guide:${door.wall}:${open}`, () => paintPassageGuide(door.wall, open));
     way.position.set(door.wall === 'ns' ? (door.x - 1) * 32 : door.x * 32, door.wall === 'ns' ? door.y * 32 : (door.y - 1) * 32);
     way.visible = true;
     const pic = !o.sprite.visible || o.wall?.crops || (!o.wall && o.level > 0) ? null : o.wall ? o.shown ?? o.key : o.key;
-    glow.visible = !!pic;
+    glow.visible = !!pic; cue.lit = null;
     if (!pic) return;
-    glow.texture = this.tex.ensure(`${pic}|glow:${door.wall}`, () => doorGlow(this.tex.canvas(pic), door.wall));
+    const key = `${pic}|glow:${door.wall}`;
+    glow.texture = this.tex.ensure(key, () => doorGlow(this.tex.canvas(pic), door.wall));
     glow.position.set(o.rect.x, o.sprite.y); glow.zIndex = o.z + .01;
+    const lit = this.glowBounds.get(key) ?? alphaBounds(this.tex.canvas(key)); this.glowBounds.set(key, lit);
+    cue.lit = lit.w ? { x: glow.x + lit.x, y: glow.y + lit.y, w: lit.w, h: lit.h } : null;
     glow.tint = 0xf2deaa; glow.alpha = this.opts.reducedMotion ? .4 : .375 + Math.sin(this.time * 6) * .125;
   }
   private applyFade(o: Occluder) {
@@ -1557,6 +1581,13 @@ function doorGlow(c: HTMLCanvasElement, wall: 'ew' | 'ns'): HTMLCanvasElement {
   const s = silhouette(c);
   if (wall === 'ew') { const g = s.getContext('2d')!; g.clearRect(0, 0, s.width, 32); g.clearRect(0, 0, 4, s.height); g.clearRect(28, 0, s.width - 28, s.height); }
   return s;
+}
+/** Bounds of a picture's non-transparent pixels (w 0 when it has none). */
+function alphaBounds(c: HTMLCanvasElement): Rect {
+  const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  return x1 < 0 ? { x: 0, y: 0, w: 0, h: 0 } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 function rimOf(c: HTMLCanvasElement): HTMLCanvasElement {
   const o = document.createElement('canvas'); o.width = c.width + 2; o.height = c.height + 2;

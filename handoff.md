@@ -6,6 +6,9 @@
 - 检查：新增单测 `ui-tokens.test.ts`（写死颜色、未定义变量、加载顺序；main 的 range.css 作反例报 21 处）、station H20（七个页签框一致、字号与像素字、1920 格子 ≥64px；main 构建失败）、ui-review 的旧页签字体角色和两处格子尺寸。
 - 验证：main `ca59605e` + #165 + 本批构建 `5c0bd5a3…`：1115 单测、package、check:ci 139、station 86/86、ui、shop-feedback 28、browser、gunsmith-bench 20、shop-drag 21、hideout 8、issue26-station 18、issue26-inventory 18、loot 48、raid-default 11、save-browser 17、tactical 8、art、title 27、desktop-input 12、mobile 11、mobile-ux 13。四个尺寸前后对比图见[任务记录](docs/tasks/ui-polish-batch2.md)。
 - 遗留：1280×720 下格子里的物品名和数量约 10px（格子 <44px，要改整备或商店布局才能到 12px，待维护者定）；行动面板布局归第三批；真人/真机未验。
+## 2026-10-31 · 楼梯标签贴着自己的楼梯（#26 F07/F11）
+
+[PR #169](https://github.com/xuys2025/escape-bincov/pull/169)，分支 `claude/sad-tharp-f6c48e`，基线 main `278b7e24`（已同步 `8a28da98`、`ca59605e`）。#154 时登记的余项：站在楼梯旁时旧规则（S04b 那条）把楼梯标签挪到角色脚下，探针扫居民楼全部站位，最远离楼梯 66 像素，会压到别的门的地面标记、正对门的通行带和暖光；二楼标签平时就压在储藏室门的标记上，地下标签会被「E 开门」盖住。做了三个本地原型（先下后上 / 先左右 / 固定上方），维护者选了 A。`stairLabelPlace` 只在楼梯图四周选位置：下 → 上 → 离玩家远的一侧 → 另一侧，不盖玩家和正对门的暖光、通行带，门标记、提示、别的楼梯和标签能避就避；宿主把量到的 HUD 字框和提示框写回视图，碰到可见敌人仍只隐藏（S03c）。只改显示。新增 S07（两档桌面和触屏子集都跑；main 构建三档都只有 S07 失败）。细节、验证与截图见[任务记录](docs/tasks/stair-label-beside-stairs.md)；维护者 11-01 授权合并，以 PR 状态为准；真人/真机未验；二楼、地下楼梯图被墙挡住属于原有美术问题，没改。
 
 ## 2026-10-31 · 两份行动报告合一（#163 待定项）
 
