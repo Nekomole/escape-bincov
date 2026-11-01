@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as D from '../src/domain';
-import { departureWarnings, questProgress, exitBearing } from '../src/qol';
+import { departureWarnings, questMarks, questProgress, exitBearing } from '../src/qol';
+import { gridHtml } from '../src/station-view/grid';
+import { createSessionState, SaveSession } from '../src/session';
+import { CoastRaidRuntime } from '../src/raid-runtime/runtime';
+import { wrapCoastRuntime } from '../src/raid-runtime/host';
+import { InventoryPanel } from '../src/coast-view/inventory';
 
 test('departure warnings use matching ammo in the backpack and distinguish safe-only treatment', () => {
     const s = D.newSave(); s.bag.items = []; s.safe.items = []; s.equipment.weapon = 'pistol';
@@ -23,4 +28,84 @@ test('navigation reports compass bearing and straight-line tile distance in ever
         const result = exitBearing({x:0,y:0},{x,y}); assert.equal(result.direction,dir); assert.equal(result.distance,Math.hypot(x,y)/32);
     }
     assert.equal(exitBearing({x:1,y:2},{x:1,y:2}).distance,0);
+});
+
+/** Item art paints into a canvas; without a 2D context the grids leave it out. Restored after the test. */
+function stubPage(t: { after(fn: () => void): void }, values: Record<string, unknown>) {
+    for (const [key, value] of Object.entries(values)) {
+        const before = Object.getOwnPropertyDescriptor(globalThis, key);
+        t.after(() => { if (before) Object.defineProperty(globalThis, key, before); else delete (globalThis as Record<string, unknown>)[key]; });
+        Object.defineProperty(globalThis, key, { configurable: true, value });
+    }
+}
+const noCanvas = { createElement: () => ({ getContext: () => null }) };
+/** Whether each item cell in grid markup carries the quest ring, keyed "source/uid". */
+function ringed(html: string): Map<string, boolean> {
+    const out = new Map<string, boolean>();
+    for (const m of html.matchAll(/<div ([^>]*\bdata-uid="[^"]+"[^>]*)>/g)) {
+        const attr = (k: string) => new RegExp(`\\b${k}="([^"]*)"`).exec(m[1])?.[1] ?? '', cls = attr('class').split(' ');
+        if (cls.includes('item')) out.set(`${attr('data-source') || attr('data-src')}/${attr('data-uid')}`, cls.includes('need'));
+    }
+    return out;
+}
+test('quest marks ring held quest items until handed in and outside copies only while still short', () => {
+    const s = D.newSave(); s.stash.items = []; s.bag.items = []; s.safe.items = [];
+    D.addItem(s.stash, 'scrap', 2);
+    let m = questMarks(s, null);
+    assert.deepEqual([...m.own].sort(), ['fuse', 'ledger', 'sample', 'scrap', 'wire']);
+    assert.ok(m.wanted.has('scrap') && m.wanted.has('wire'));
+    D.addItem(s.safe, 'scrap'); m = questMarks(s, null);
+    assert.ok(m.own.has('scrap') && !m.wanted.has('scrap'), 'stash 2 + safe 1 = the 3 asked for');
+    assert.ok(m.wanted.has('wire') && m.wanted.has('fuse'));
+    s.quests.repair = true; m = questMarks(s, null);
+    assert.ok(!m.own.has('scrap') && !m.wanted.has('scrap') && !m.own.has('wire'), 'a handed-in quest rings nothing');
+    assert.ok(m.wanted.has('sample') && m.wanted.has('ledger'));
+});
+test("during a raid the held count is the quest card's: stash plus carried bag and safe", () => {
+    const s = D.newSave(); s.stash.items = []; s.bag.items = []; s.safe.items = [];
+    D.addItem(s.stash, 'scrap'); D.addItem(s.bag, 'scrap');
+    const loadout = D.beginRun(s, 42);
+    assert.ok(questMarks(s, loadout).wanted.has('scrap'), '1 stored + 1 carried < 3');
+    D.addItem(loadout.safe, 'scrap');
+    assert.ok(!questMarks(s, loadout).wanted.has('scrap') && questMarks(s, loadout).own.has('scrap'));
+});
+test("station grids ring quest items: wanted on the counter and the buy list, own on the player's grids", t => {
+    stubPage(t, { document: noCanvas });
+    const s = D.newSave(); s.stash.items = []; s.bag.items = []; s.safe.items = [];
+    D.addItem(s.stash, 'scrap', 3); D.addItem(s.stash, 'watch');
+    const shelf: D.Inventory = { w: 6, h: 2, items: [{ uid: 'm-scrap', id: 'scrap', qty: 5, x: 0, y: 0 }, { uid: 'm-wire', id: 'wire', qty: 5, x: 1, y: 0 }, { uid: 'm-watch', id: 'watch', qty: 1, x: 2, y: 0 }] };
+    const marks = questMarks(s, null);
+    const counter = ringed(gridHtml(shelf, 'merchant', 40, null, { marks }));
+    assert.deepEqual([...counter], [['merchant/m-scrap', false], ['merchant/m-wire', true], ['merchant/m-watch', false]], "three scrap held: the shelf's scrap goes plain");
+    assert.equal(ringed(gridHtml(shelf, 'buy', 40, null, { marks })).get('buy/m-wire'), true);
+    const stash = ringed(gridHtml(s.stash, 'stash', 40, null, { marks })), [scrap, watch] = s.stash.items;
+    assert.equal(stash.get(`stash/${scrap.uid}`), true, 'held quest items stay ringed'); assert.equal(stash.get(`stash/${watch.uid}`), false);
+    assert.equal(ringed(gridHtml(s.stash, 'sell', 40, null, { marks })).get(`sell/${scrap.uid}`), true);
+    assert.ok(![...ringed(gridHtml(shelf, 'merchant', 40, null)).values()].some(Boolean), 'no marks, no rings');
+    assert.match(gridHtml(shelf, 'merchant', 40, null, { marks }), /aria-label="绝缘线圈 × 5，任务需要"/);
+});
+test("the raid loot panel rings a container's quest items only while short, and carried ones until handed in", t => {
+    stubPage(t, { document: noCanvas, innerHeight: 720, innerWidth: 1280 });
+    const state = createSessionState(), data = new Map<string, string>();
+    const saves = new SaveSession(state, () => ({ getItem: k => data.get(k) ?? null, setItem: (k, v) => { data.set(k, v); } }));
+    assert.ok(saves.initialize()); state.state = 'hideout'; assert.ok(saves.beginRun(42, true)); state.state = 'run';
+    const runtime = new CoastRaidRuntime(state, saves); runtime.freezeAI = true;
+    const save = state.save, loadout = state.loadout!;
+    save.stash.items = []; loadout.bag.items = []; loadout.safe.items = [];
+    D.addItem(save.stash, 'scrap'); assert.equal(D.addItem(loadout.bag, 'scrap'), 0);
+    const box: D.Inventory = { w: 4, h: 2, items: [{ uid: 'c-scrap', id: 'scrap', qty: 2, x: 0, y: 0 }, { uid: 'c-wire', id: 'wire', qty: 1, x: 1, y: 0 }, { uid: 'c-watch', id: 'watch', qty: 1, x: 2, y: 0 }] };
+    // The services object is frozen: a copy with the open container standing in for a real one.
+    const services = { ...wrapCoastRuntime(runtime, state, saves).services, lootInventory: () => box };
+    const el = { innerHTML: '', querySelectorAll: () => [], querySelector: () => null };
+    const panel = new InventoryPanel(el as unknown as HTMLElement, {
+        services, lootRef: () => ({ kind: 'container', id: 'c' }) as never, touch: () => false, toast() {}, saveFailed() {}, close() {},
+        magazine: () => 0, questMarks: () => questMarks(state.save, state.loadout),
+    });
+    const bagScrap = () => `bag/${loadout.bag.items.find(i => i.id === 'scrap')!.uid}`;
+    panel.open('loot'); let cells = ringed(el.innerHTML);
+    assert.deepEqual([cells.get('container/c-scrap'), cells.get('container/c-wire'), cells.get('container/c-watch'), cells.get(bagScrap())], [true, true, false, true]);
+    assert.equal(D.addItem(loadout.bag, 'scrap'), 0); panel.render(); cells = ringed(el.innerHTML);
+    assert.deepEqual([cells.get('container/c-scrap'), cells.get('container/c-wire'), cells.get(bagScrap())], [false, true, true], "1 stored + 2 carried: the box's scrap goes plain, the carried ones stay");
+    save.quests.repair = true; panel.render();
+    assert.ok(![...ringed(el.innerHTML).values()].some(Boolean), 'handed in: nothing ringed');
 });

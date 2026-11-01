@@ -1,3 +1,12 @@
+## 2026-11-02 · 任务物品绿框高亮（维护者需求）
+
+分支 `feat/quest-item-highlight`，基线 main `33adc85b`。维护者要任务需要的物品高亮（金边或绿边），并且“智能显示”：凑够以后外面的不再标，背包里的照样标。[任务记录](docs/tasks/quest-item-highlight.md)。
+
+- 实现：`qol.questMarks` 给出两组物品：`own`（未交任务要的，标在玩家自己的格子上，交付前一直标）和 `wanted`（还没凑够的，另外标在物资箱、尸体、商人货架、待买上）。“已有”按任务卡的数：行动中仓库加身上，院子里仓库、背包、安全箱。行动面板经 `InventoryHost.questMarks`，院子经 `gridHtml` 的 `marks`。用绿色而不是金色，因为悬停和选中已经是琥珀金；绿边、浅绿底、空角上的小三角，提示文字加“任务需要”。旧版页签未改；存档与规则不变。
+- 检查：qol.test.ts 新增 4 项（两项格子输出在把 `need` 改成恒为否时失败）；`issue26-raid-inventory` 新增 `quest-item-rings`（1280、1920：真实开箱、实际绿框、凑够后箱内变普通）；`shop-feedback` 新增 `quest rings`（1280、1920、844×390：货架、仓库、待卖、整备，不写存档）。
+- 验证（本机 Chrome，构建 `e0cc9552…`）：1122 单测、package、check:ci 139；issue26-inventory 20/20、shop-feedback 31、shop-drag 21/21、loot 48、ui 38、qol 27、issue26-station 18/18。
+- 遗留：旧版页签没加；真人/真机未验。
+
 ## 2026-11-01 · 前端精致度第二批：共用变量、固定面板框、格子随屏幕放大（#163）
 
 分支 `fix/ui-polish-batch2`，基线 main `ca59605e`，叠在第一批 #165 的 head `43c2ee3b` 上（先合 #165）。维护者从三套原型（A 院子琥珀 / B 标题黄铜 / C 行动卡其；右侧固定宽 / 居中统一大框）里选了配色 A 和居中统一大框。
