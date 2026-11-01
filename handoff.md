@@ -15,6 +15,14 @@
 - 验证：完整单测 1126/1126、工程守卫 139/139、TypeScript 与 package 通过；真实浏览器剧情接口六组、通用存档回归、四份固定旧客户端的扩展兼容回归通过。便携 ZIP 6,128,719 bytes，不使用已取消的 5 MiB 门槛。最终远端 CI 以 PR 准确 head 为准。
 - 接口和任务书：[市场剧情底层与 Opus 接入说明](docs/tasks/market-story-core.md)。特别保留“观察≠报告”；带真实总闸观察的 tell 分支确实说出了闸位，因此同笔记 reported；unchecked 不补造事实。读回顾不写状态，保存成功后才播 cue/成功对白。
 - 待 Opus：新市场出击开关、场景锚点、小蔡对白面板、见闻回顾、字幕/音效优先级与输入释放；随后做各尺寸、静音、自然两路线和真人理解。#83 总体未完成，未合并、未部署。#164 文学与 #161 节奏线仍由原 PR 承接。
+## 2026-10-31 · 两份行动报告合一（#163 待定项）
+
+[PR #166](https://github.com/xuys2025/escape-bincov/pull/166)，分支 `fix/one-raid-report`，基线 main `278b7e24`。核对发现结算写入、写入失败重试、备份导出和撤离/死亡音效都在局内「正在保存结算」面板，两份报告只负责显示（#163 原写“结算页负责音效与重试落点”不准确）。做了对照表（A 保留旧结算页 / B 保留院子报告 / C 合并原型，三尺寸真实截图），维护者选 B，并同意不等 #165 先做。
+
+- 实现：`coast-view/sample.ts` 的 `finish` 改调页面 `settled` → `returnToStation`，结局动画后直接走进院门、只弹院子报告。旧结算页只在页签入口或 `returnToBase` 被拒时兜底，从它返回用 `returnToStation(true)`，不再弹第二份；院子起不来时报告在页签界面以对话框出现。存档规则不变。
+- 测试：7 个院子模式脚本改测新流程；`yard-entry.mjs` 新增 `watchOldPage` / `yardReport`（断言途中没画旧页面）与 `atRaidRelease` / `releasedState`（院子紧接着接管 Pixi 应用，停放状态改在释放瞬间读，回收检查放到院子起来之后）；station 新增 G8/G9/G10 兜底反例。
+- 验证（本机 Chrome，构建 `2e4eb2aa…`）：1113 单测、package、139 工程守卫；`test:station` 84/84，save-browser 17/17，raid-default 11/11，coast-render-targets 5/5，station-capability 4/4，browser、ui、systems、station-relief/tier1/tier2、hud-release、desktop-input、mobile 通过。station-round2-recheck（J,K,R）4/8、coast-lifecycle（review 类）1/5，与 main 原脚本逐项相同，改动处的检查通过。详见[任务页](docs/tasks/one-raid-report.md)。
+- 未做/待办：#165 合并后同步 main 重跑；真人/真机未验；院子报告没有“进度已保存”这句（未要求改）。
 
 ## 2026-10-31 · 官网首页：Pages 根目录是官网，游戏移到 `play/`
 
