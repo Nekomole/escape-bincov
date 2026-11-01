@@ -172,8 +172,10 @@ export class StationHost {
       this.keys.add(k);
     });
     s.on(window, 'keyup', e => { this.keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); });
-    s.on(window, 'blur', () => { this.keys.clear(); dropJoy(); });
-    s.on(document, 'visibilitychange', () => { this.keys.clear(); dropJoy(); });
+    // Leaving the window or hiding the page also ends a conversation with 小蔡 without answering (#83 mk-a27).
+    s.on(window, 'blur', () => { this.keys.clear(); dropJoy(); this.ui.releaseTalk(); });
+    s.on(window, 'pagehide', () => { this.keys.clear(); dropJoy(); this.ui.releaseTalk(); });
+    s.on(document, 'visibilitychange', () => { this.keys.clear(); dropJoy(); if (document.hidden) this.ui.releaseTalk(); });
     s.on(canvas, 'contextmenu', e => e.preventDefault());
     s.on(canvas, 'wheel', e => { e.preventDefault(); this.scene.zoom(e.deltaY < 0 ? 1 : -1); }, { passive: false });
     s.on(canvas, 'pointerdown', e => {

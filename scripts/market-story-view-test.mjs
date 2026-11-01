@@ -332,6 +332,68 @@ try {
     const h = await hud(); assert.match(h.prompt ?? '', /检查 · 配电箱/); assert.equal(h.recall, '见闻 · 0');
     await shot('M11-raid-1920x1080');
   });
+
+  await step('M12 院子失焦：切窗口、页面隐藏、离开页面都结束小蔡对话并释放会话，聚焦或按住的回答不会被选', async () => {
+    await yard({ story: ['breaker-down'], parts: true });
+    // Spy on the conversations the yard opens: a released cursor answers view() with null.
+    await page.evaluate(() => {
+      const rt = window.__bincov.hideoutRuntime, open = rt.openStory.bind(rt);
+      window.__talks = []; rt.openStory = e => { const c = open(e); if (c) window.__talks.push(c); return c; };
+    });
+    // Synthetic window / page signals with the return to the page; headless keeps the real page focused and visible.
+    const signal = name => page.evaluate(name => {
+      if (name === 'blur') { window.dispatchEvent(new Event('blur')); window.dispatchEvent(new Event('focus')); return; }
+      if (name === 'pagehide') { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); return; }
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      try { document.dispatchEvent(new Event('visibilitychange')); } finally { delete document.hidden; }
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, name);
+    const released = () => page.evaluate(() => window.__talks.length > 0 && window.__talks.at(-1).view() === null);
+    const kind = () => page.evaluate(() => window.__station.host.ui.kind);
+    await press('[data-quick="radio"]'); await press('[data-act="radio-tab:talk"]');
+    const idle = (await talk()).box, before = JSON.stringify(await storyOf()), checks = [];
+    const left = async label => {
+      const t = await talk();
+      assert.deepEqual(t.options, [], `${label}: no answer left on screen`); assert.match(t.lines[0], /选一个话题/, label);
+      assert.deepEqual(t.box, idle, `${label}: the box keeps its place and size`); assert.equal(await kind(), 'radio', `${label}: the radio panel stays`);
+      assert.equal(await released(), true, `${label}: conversation released`);
+      assert.equal(JSON.stringify(await storyOf()), before, `${label}: nothing chosen`);
+      checks.push(label);
+    };
+    // Keyboard focus on the answer that would write; Enter and Space on returning land on nothing.
+    for (const name of ['blur', 'hidden']) {
+      await press('[data-act="talk:breaker"]'); assert.deepEqual((await talk()).options, ['say:report', 'say:exit']);
+      await ui('[data-act="say:report"]').focus();
+      await signal(name);
+      await page.keyboard.press('Enter'); await page.keyboard.press(' '); await page.waitForTimeout(120);
+      await left(`${name} + keyboard`);
+    }
+    // A mouse press held on the answer across the window switch: the release clicks nothing.
+    await press('[data-act="talk:breaker"]');
+    const b = await ui('[data-act="say:report"]').boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down();
+    await signal('blur'); await page.mouse.up(); await page.waitForTimeout(120);
+    await left('blur + held mouse');
+    const stale = await page.evaluate(() => window.__talks.at(-1).choose('report'));
+    assert.equal(stale.ok, false, 'a released cursor cannot answer'); assert.equal(JSON.stringify(await storyOf()), before);
+    // A delivery holds its conversation over the lamp sequence; hiding the page then releases that one too.
+    const cash = (await record()).profile.cash;
+    await press('[data-act="talk:start"]'); await press('[data-act="say:submit"]');
+    await until(() => window.__station.host.debug.seq === 'power', 'power sequence', undefined, 4000);
+    await signal('hidden');
+    await until(() => window.__station.host.debug.seq === null, 'lamps on', undefined, 12000); await page.waitForTimeout(200);
+    assert.equal(await kind(), null, 'the released conversation does not come back after the lamps');
+    assert.equal(await released(), true, 'held conversation released');
+    assert.equal((await record()).profile.cash, cash + 420, 'the delivery paid once'); checks.push('hidden over the power sequence');
+    // Leaving the page (pagehide, last: it also gives up save ownership).
+    await press('[data-quick="radio"]'); await press('[data-act="radio-tab:talk"]'); await press('[data-act="talk:start"]');
+    assert.ok((await talk()).options.length > 0);
+    const after = JSON.stringify(await storyOf());
+    await signal('pagehide');
+    const t = await talk(); assert.deepEqual(t.options, []); assert.equal(await released(), true, 'pagehide: conversation released');
+    assert.equal(JSON.stringify(await storyOf()), after, 'pagehide: nothing chosen'); checks.push('pagehide');
+    return { checks };
+  });
 } finally {
   report.finishedAt = new Date().toISOString();
   report.summary = { passed: report.steps.filter(s => s.status === 'passed').length, failed: report.steps.filter(s => s.status === 'failed').length };

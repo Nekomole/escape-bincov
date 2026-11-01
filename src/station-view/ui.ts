@@ -244,6 +244,17 @@ export class UI {
     if (!next) { this.dropTalk(); this.host.sound('close'); } else this.host.sound(next.id === 'ch01-dlg-submit' ? 'deliver' : 'pick');
     this.render();
   }
+  /**
+   * The window lost focus or the page was hidden (switching windows, apps or tabs): end the conversation without
+   * answering, including one held over the power sequence. The talk page keeps its box and shows the topic list again,
+   * so a key pressed on returning cannot land on an answer that was on screen.
+   */
+  releaseTalk() {
+    const held = this.heldTalk; this.heldTalk = null; held?.talk.close();
+    if (!this.talk) return;
+    this.dropTalk();
+    if (this.kind === 'radio') this.render();
+  }
   /** The yard is about to close the panel for the power sequence: keep the conversation for resumeTalk. */
   holdTalk() {
     if (this.talk && this.talkEntry) this.heldTalk = { talk: this.talk, entry: this.talkEntry, title: this.talkTitle };
