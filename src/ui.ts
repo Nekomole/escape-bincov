@@ -121,6 +121,8 @@ export function changeState(state: Exclude<typeof app.state, 'run'>) {
 const btn = (label: string, action: string, cls = '', extra = '') => `<button class="${cls}" data-action="${action}" ${extra}>${label}</button>`;
 function preparedWeight(){const s=app.save,w=D.equippedWeapon(s.equipment);return D.weight(s.bag)+D.weight(s.safe)+D.ITEMS.knife.weight+D.equippedWeight(s.equipment)+(w.ammo?D.ITEMS[w.ammo].weight*s.equipment.ammo:0)+(app.expansion?.charm ? D.ITEMS[app.expansion.charm.id].weight : 0);}
 function inventoryCell() { return !touchLayout() && innerWidth >= 1700 && innerHeight >= 900 ? 80 : 54; }
+/** The shop's four grids (22 columns side by side) at the largest cell the page width allows, never below 54 px. */
+function shopCell() { return touchLayout() ? 54 : Math.max(54, Math.min(80, Math.floor((Math.min(innerWidth, 1920) - 300) / 22), Math.floor((innerHeight - 330) / 8))); }
 function itemIcon(id: string, small = false) {
     const size = small ? 24 : 32, art = artId(id), url = art ? painted(`item-${small ? 'small-' : ''}${art}`, size, size, c => paintItem(c, art, size)) : '';
     return url ? `<img class="item-icon${small ? ' compact-icon' : ''}" width="${small ? 24 : 32}" height="${small ? 24 : 32}" alt="" draggable="false" src="${url}">` : '';
@@ -405,7 +407,7 @@ function renderHideout() {
     } else if (app.tab === 'facilities') { body = facilityPanel();
     } else if (app.tab === 'arms' || app.tab === 'med') {
         const c = cart(), merchant = D.MERCHANTS[c.merchant], totals = Shop.cartTotals(c);
-        body = `<div class="merchant-heading">${merchantPortrait(app.tab)}<div><h3>${merchant.name}<span>${merchant.subtitle}</span></h3><p>先选物品，再一起结算。放回原侧可取消。</p></div></div><div class="shop-layout" data-merchant="${app.tab}"><section><h3>商人物品 · 按包购买</h3>${shopBrowseBar()}${grid(c.catalog, 'merchant', 54)}</section><section class="shop-buffer"><div><h3>待买 · ¥ ${totals.buy}</h3>${grid(c.buy, 'buy', 54)}</div><div><h3>待卖 · ¥ ${totals.sell}</h3>${grid(c.sell, 'sell', 54)}</div></section><section><h3>仓库 · 整组出售</h3>${grid(c.stash, 'stash', 54)}</section></div>${details()}`;
+        body = `<div class="merchant-heading">${merchantPortrait(app.tab)}<div><h3>${merchant.name}<span>${merchant.subtitle}</span></h3><p>先选物品，再一起结算。放回原侧可取消。</p></div></div><div class="shop-layout" data-merchant="${app.tab}"><section><h3>商人物品 · 按包购买</h3>${shopBrowseBar()}${grid(c.catalog, 'merchant', shopCell())}</section><section class="shop-buffer"><div><h3>待买 · ¥ ${totals.buy}</h3>${grid(c.buy, 'buy', shopCell())}</div><div><h3>待卖 · ¥ ${totals.sell}</h3>${grid(c.sell, 'sell', shopCell())}</div></section><section><h3>仓库 · 整组出售</h3>${grid(c.stash, 'stash', shopCell())}</section></div>${details()}`;
     } else if (app.tab === 'quests') {
         body = `<div class="quests">${Object.entries(D.QUESTS).map(([id, q], i) => {
             const complete = s.quests[id];

@@ -58,10 +58,12 @@ export class InventoryPanel {
 
   /**
    * Grid cell in CSS px. Desktop uses the base UI's 54, where a three-character label (the fuse, carbine rounds) fits the
-   * pixel face at its native 16 px. Touch and very short screens stay compact; there a label that would not fit takes the
-   * small system face instead of being cut to its first character (see `labelFits`).
+   * pixel face at its native 16 px, and 72 on a 1600×1000 or larger window so the grid grows with the screen (#163 batch 2;
+   * coast.css widens the docked panel to match, keeping the details column beside the grids).
+   * Touch and very short screens stay compact; there a label that would not fit takes the small system face instead of
+   * being cut to its first character (see `labelFits`).
    */
-  private cell() { return this.host.touch() ? 40 : innerHeight < 600 ? 44 : 54; }
+  private cell() { return this.host.touch() ? 40 : innerHeight < 600 ? 44 : innerHeight >= 1000 && innerWidth >= 1600 ? 72 : 54; }
   private inv(source: Source): D.Inventory | null {
     if (source === 'container') { const ref = this.host.lootRef(); return ref ? this.host.services.lootInventory(ref) : null; }
     return this.host.services.inventoryView()?.[source] ?? null;

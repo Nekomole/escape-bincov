@@ -1,80 +1,80 @@
 /* Bincov's field equipment: quiet charcoal, worn khaki, native pixel lettering.
    World coordinates and touch controls keep their existing scale. */
-:root { --ink:#e0dfd4; --muted:#acada3; --faint:#8f9288; --line:#42463c; --surface:#1b1e1a; --accent:#c7ba8c; --warm:#dbac81; --pixel:"Bincov Text","Microsoft YaHei",sans-serif; --inventory-cell:54px; }
-html, body { background:#101210; font-family:var(--pixel); font-size:16px; font-synthesis:none; }
-button { font-size:16px; line-height:1.5; color:var(--ink); border-color:#646653; background:#2b3025; }
-button:hover:not(:disabled) { background:#3b4030; border-color:#b4aa82; color:#fff7d7; }
-button.primary { color:#191c16; background:#c7ba8c; border-color:#e0d5ad; font-weight:400; }
-button.primary:hover:not(:disabled) { background:#e0d5ad; color:#151810; }
-button.text-button { color:#c5bd9c; }
-button:disabled { color:#95978b; background:#24271f; border-color:#42463c; }
-.panel { background:#1a1d19fa; border-color:#555847; box-shadow:0 8px 30px #0006; }
+:root { --ink:rgb(var(--ui-n14)); --muted:rgb(var(--ui-n12)); --faint:rgb(var(--ui-n10)); --line:rgb(var(--ui-n6)); --surface:rgb(var(--ui-n3)); --accent:rgb(var(--ui-a)); --warm:rgb(var(--ui-w)); --pixel:var(--ui-px); --inventory-cell:54px; }
+html, body { background:rgb(var(--ui-n1)); font-family:var(--pixel); font-size:16px; font-synthesis:none; }
+button { font-size:16px; line-height:1.5; color:var(--ink); border-color:rgb(var(--ui-n8)); background:rgb(var(--ui-n4)); }
+button:hover:not(:disabled) { background:rgb(var(--ui-n6)); border-color:rgb(var(--ui-a)); color:rgb(var(--ui-n15)); }
+button.primary { color:rgb(var(--ui-n2)); background:rgb(var(--ui-a)); border-color:rgb(var(--ui-n13)); font-weight:400; }
+button.primary:hover:not(:disabled) { background:rgb(var(--ui-n13)); color:rgb(var(--ui-n2)); }
+button.text-button { color:rgb(var(--ui-n12)); }
+button:disabled { color:rgb(var(--ui-n10)); background:rgb(var(--ui-n4)); border-color:rgb(var(--ui-n6)); }
+.panel { background:rgb(var(--ui-n3) / .98); border-color:rgb(var(--ui-n7)); box-shadow:0 8px 30px #0006; }
 .small, .inv-help, .content-note, .section-label { font-size:16px; line-height:1.5; letter-spacing:0; }
 .section-title { font-size:16px; line-height:24px; margin:0 0 8px; font-weight:400; letter-spacing:0; justify-content:flex-start; }
-.section-title span { margin-left:auto; font:12px/1.5 "Microsoft YaHei",sans-serif; color:var(--muted); }
-.section-number { font:12px var(--mono); color:#d3c599; border:1px solid #5d604c; padding:1px 4px; font-weight:400; }
+.section-title span { margin-left:auto; font:var(--ui-fs-s)/1.5 var(--ui-sys); color:var(--muted); }
+.section-number { font:var(--ui-fs-s) var(--ui-sys); font-variant-numeric:tabular-nums; color:rgb(var(--ui-a)); border:1px solid rgb(var(--ui-n8)); padding:1px 4px; font-weight:400; }
 .item-icon { width:32px; height:32px; image-rendering:pixelated; }
 .compact-icon { width:24px; height:24px; }
 .inventory-art { position:absolute; inset:20px 3px 3px; display:flex; align-items:center; justify-content:center; pointer-events:none; }
 .inventory-art-image { display:block; flex-shrink:0; object-fit:contain; image-rendering:pixelated; pointer-events:none; }
-.grid { background-color:#121511; background-image:linear-gradient(#3d4235 1px,transparent 1px),linear-gradient(90deg,#3d4235 1px,transparent 1px); border-color:#3d4235; }
-.item { background:#2a3024; border-color:#656a50; color:#e9e4cd; }
-.item[data-kind="medical"] { background:#34352a; border-color:#8b7b65; }
-.item[data-kind="ammo"] { background:#323226; border-color:#817a51; }
-.item[data-kind="quest"] { background:#34332a; border-color:#a49164; }
-.item[data-kind="valuable"] { background:#323126; border-color:#9b8654; }
-.item:hover { background:#3b412e; border-color:#dfd1a0; }
-.item.selected { background:#414730; border-color:#eee1ae; outline:1px solid #eee1ae; }
-.item .item-label { top:0; bottom:auto; font:16px/18px var(--pixel); height:19px; color:#eae5d5; background:#11150eda; padding:0 1px; }
-.item .qty { top:auto; bottom:0; right:0; font:16px/18px var(--pixel); color:#f4ecd4; min-width:16px; background:#11150ef5; padding:0 2px; }
-.item .relief { color:#e7bc7e; }
-.empty-hint { font-size:16px; color:#a7ac98; }
+.grid { background-color:rgb(var(--ui-n1)); background-image:linear-gradient(rgb(var(--ui-n6)) 1px,transparent 1px),linear-gradient(90deg,rgb(var(--ui-n6)) 1px,transparent 1px); border-color:rgb(var(--ui-n6)); }
+.item { background:rgb(var(--ui-n4)); border-color:rgb(var(--ui-n8)); color:rgb(var(--ui-n14)); }
+.item[data-kind="medical"] { background:rgb(var(--ui-n5)); border-color:rgb(var(--ui-n9)); }
+.item[data-kind="ammo"] { background:rgb(var(--ui-n5)); border-color:rgb(var(--ui-a-mid)); }
+.item[data-kind="quest"] { background:rgb(var(--ui-n5)); border-color:rgb(var(--ui-a-mid)); }
+.item[data-kind="valuable"] { background:rgb(var(--ui-n5)); border-color:rgb(var(--ui-a-mid)); }
+.item:hover { background:rgb(var(--ui-n6)); border-color:rgb(var(--ui-a-hi)); }
+.item.selected { background:rgb(var(--ui-n6)); border-color:rgb(var(--ui-a-hi)); outline:1px solid rgb(var(--ui-a-hi)); }
+.item .item-label { top:0; bottom:auto; font:16px/18px var(--pixel); height:19px; color:rgb(var(--ui-n14)); background:rgb(var(--ui-n1) / .85); padding:0 1px; }
+.item .qty { top:auto; bottom:0; right:0; font:16px/18px var(--pixel); color:rgb(var(--ui-n15)); min-width:16px; background:rgb(var(--ui-n1) / .96); padding:0 2px; }
+.item .relief { color:rgb(var(--ui-a)); }
+.empty-hint { font-size:16px; color:rgb(var(--ui-n11)); }
 .equipment-section { width:auto; }
-.equip { border:1px solid #565b46; background:#23281f; padding:10px; margin:0; }
+.equip { border:1px solid rgb(var(--ui-n7)); background:rgb(var(--ui-n4)); padding:10px; margin:0; }
 .equipment-caption { display:flex; justify-content:space-between; color:var(--muted); font-size:16px; }
 .equipped-icon { height:52px; display:flex; justify-content:center; align-items:center; margin:6px 0; overflow:hidden; }
 .equipment-name { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; }
 .equipment-name strong { font-size:16px; font-weight:400; }
-.equipment-name span { font:14px var(--mono); color:#c8c19e; }
+.equipment-name span { font:16px var(--pixel); color:rgb(var(--ui-n12)); }
 .equip .text-button { margin-top:6px; font-size:16px; }
 .reserve-ammo { font-size:16px; line-height:1.5; margin:8px 0 10px; color:var(--muted); }
 .reserve-ammo span { display:block; color:var(--ink); }
 .secure-kit { display:flex; gap:10px; align-items:flex-start; }
 .knife-card { min-width:72px; display:flex; flex-direction:column; gap:4px; font-size:16px; }
 .knife-card strong { font-size:16px; font-weight:400; }
-.knife-card span { color:var(--muted); font:12px/1.5 "Microsoft YaHei",sans-serif; }
-.load-meter { font-size:16px; border-color:#4b513c; }
+.knife-card span { color:var(--muted); font:var(--ui-fs-s)/1.5 var(--ui-sys); }
+.load-meter { font-size:16px; border-color:rgb(var(--ui-n7)); }
 .load-meter strong { font:16px var(--pixel); }
-.load-meter small { font-size:12px; }
-.load-meter i { background:#b6ae7f; }
+.load-meter small { font:var(--ui-fs-s) var(--ui-sys); }
+.load-meter i { background:rgb(var(--ui-a)); }
 .merchant-portrait { width:48px; height:48px; image-rendering:pixelated; }
 .merchant-heading { justify-content:flex-start; gap:14px; margin-bottom:14px; flex-shrink:0; }
 .merchant-heading h3 { font-size:16px; font-weight:400; margin:0 0 4px; }
 .merchant-heading h3 span, .merchant-heading p { font-size:16px; }
 .merchant-heading p { margin:0; color:var(--muted); }
-.quest h3, .station-log h3 { font-size:24px; font-weight:400; }
+.quest h3, .station-log h3 { font-size:16px; font-weight:400; }
 .quest p, .quest-needs li, .quest-needs strong, .quest-footer span, .station-copy, .tide-notes > div, .save-controls p, .volume-control { font-size:16px; line-height:1.5; }
-.quest { height:auto; min-height:320px; background:#22271e; border-color:#4e5440; }
+.quest { height:auto; min-height:320px; background:rgb(var(--ui-n4)); border-color:rgb(var(--ui-n7)); }
 .quest-status, .completion-mark { font-size:16px; }
 .modal p, .result p, .help-grid, .help-grid kbd { font-size:16px; line-height:1.5; }
 .modal h2, .result h2 { font-size:32px; font-weight:400; }
-.help-grid kbd { width:116px; font-family:var(--mono); }
-#toast { font-size:16px; background:#242c20; border-color:#a49d74; color:#eee7d1; }
+.help-grid kbd { width:116px; font-family:var(--pixel); }
+#toast { font-size:16px; background:rgb(var(--ui-n4)); border-color:rgb(var(--ui-a-mid)); color:rgb(var(--ui-n14)); }
 .ui-symbol { width:24px; height:24px; vertical-align:middle; }
 html:not(.mobile) body[data-screen="hideout"] #frame { width:min(100vw,1808px); height:100dvh; transform:none!important; }
 html:not(.mobile) body[data-screen="hideout"] #game canvas { width:100%; height:100%; }
 html:not(.mobile) .hideout { inset:0; border-top:0; border-bottom:0; }
-html:not(.mobile) .topbar { min-height:60px; padding:8px 20px; background:#141713; }
-html:not(.mobile) .station-identity .section-label { font:11px "Microsoft YaHei",sans-serif; color:#aaab9a; }
-html:not(.mobile) .topbar h2 { font:20px "Microsoft YaHei",sans-serif; letter-spacing:2px; }
-html:not(.mobile) .cash span, html:not(.mobile) .station-signal { font:12px "Microsoft YaHei",sans-serif; }
-html:not(.mobile) .cash strong { font-size:20px; color:#ded1a4; }
-html:not(.mobile) .tabs { gap:32px; padding:0 20px; background:#1b1f18; }
+html:not(.mobile) .topbar { min-height:60px; padding:8px 20px; background:rgb(var(--ui-n2)); }
+html:not(.mobile) .station-identity .section-label { font:var(--ui-fs-s) var(--ui-sys); color:rgb(var(--ui-n11)); }
+html:not(.mobile) .topbar h2 { font:20px var(--ui-sys); letter-spacing:2px; }
+html:not(.mobile) .cash span, html:not(.mobile) .station-signal { font:var(--ui-fs-s) var(--ui-sys); }
+html:not(.mobile) .cash strong { font-size:32px; color:rgb(var(--ui-a-hi)); }
+html:not(.mobile) .tabs { gap:32px; padding:0 20px; background:rgb(var(--ui-n3)); }
 html:not(.mobile) .tabs button { font-size:16px; padding:9px 0; }
-html:not(.mobile) .tabs button.active { color:#ebdfb2; }
-html:not(.mobile) .tabs button.active::after { background:#c7ba8c; }
+html:not(.mobile) .tabs button.active { color:rgb(var(--ui-a-hi)); }
+html:not(.mobile) .tabs button.active::after { background:rgb(var(--ui-a)); }
 html:not(.mobile) .tabs .inventory-tools { margin:0 0 0 auto; flex-wrap:nowrap; gap:8px; }
-html:not(.mobile) .tabs .inventory-tools button { padding:4px 8px; border:1px solid #646653; white-space:nowrap; }
+html:not(.mobile) .tabs .inventory-tools button { padding:4px 8px; border:1px solid rgb(var(--ui-n8)); white-space:nowrap; }
 html:not(.mobile) .content { padding:14px 20px 0; }
 html:not(.mobile) .gear-content { display:flex; flex-direction:column; overflow:hidden; }
 html:not(.mobile) .gear-columns { display:grid; grid-template-columns:minmax(210px,1fr) calc(var(--inventory-cell) * 6) calc(var(--inventory-cell) * 10); gap:24px; flex:1; min-height:0; overflow:auto; padding:0 0 14px; align-items:start; }
@@ -83,8 +83,8 @@ html:not(.mobile) .gear-columns > section { position:static; }
    box; the bag, safe and inspector stay put. The extra 12 px holds the thin scrollbar beside the tenth column. */
 html:not(.mobile) .gear-columns { grid-template-columns:minmax(210px,1fr) calc(var(--inventory-cell) * 6) calc(var(--inventory-cell) * 10 + 12px); grid-template-rows:minmax(0,1fr); }
 html:not(.mobile) .gear-columns > .stash-section { display:flex; flex-direction:column; max-height:100%; min-height:0; }
-html:not(.mobile) .gear-columns > .stash-section > .stash-scroll { flex:0 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; scrollbar-color:#5d7157 #0d1916; }
-html:not(.mobile) .content > .details { display:grid; grid-template-columns:210px 1fr; gap:16px; width:100%; flex:0 0 120px; height:120px; min-height:120px; padding:12px 0; border-left:0; border-top:1px solid #686b52; overflow:auto; background:#1a1d19; }
+html:not(.mobile) .gear-columns > .stash-section > .stash-scroll { flex:0 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; scrollbar-color:rgb(var(--ui-n8)) rgb(var(--ui-n2)); }
+html:not(.mobile) .content > .details { display:grid; grid-template-columns:210px 1fr; gap:16px; width:100%; flex:0 0 120px; height:120px; min-height:120px; padding:12px 0; border-left:0; border-top:1px solid rgb(var(--ui-n8)); overflow:auto; background:rgb(var(--ui-n3)); }
 html:not(.mobile) .details .item-heading { align-items:flex-start; margin:0; gap:10px; }
 html:not(.mobile) .details h3 { font-size:16px; font-weight:400; margin:3px 0; }
 html:not(.mobile) .details .section-label, html:not(.mobile) .details p, html:not(.mobile) .details .inv-help { font-size:16px; line-height:1.5; margin:0; }
@@ -123,13 +123,13 @@ html:not(.mobile) .vitals { width:218px; }
 html:not(.mobile) .field-notes dt { font-size:16px; }
 html:not(.mobile) .field-notes > div { margin-bottom:4px; }
 /* Small metadata uses a text face; bitmap glyphs stay on the native 16px grid. */
-.station-stats span, .result .stats span { font-family:"Microsoft YaHei","PingFang SC",sans-serif; }
-.mobile .small, .mobile .inv-help, .mobile .content-note, .mobile .section-label, .mobile .inventory-row small, .mobile .item-facts, .mobile .placement-controls { font-family:"Microsoft YaHei","PingFang SC",sans-serif; }
+.station-stats span, .result .stats span { font-family:var(--ui-sys); }
+.mobile .small, .mobile .inv-help, .mobile .content-note, .mobile .section-label, .mobile .inventory-row small, .mobile .item-facts, .mobile .placement-controls { font-family:var(--ui-sys); }
 .mobile .item-description, .mobile .quest p, .mobile .quest-needs li, .mobile .station-copy, .mobile .tide-notes > div, .mobile .save-controls p { font-size:16px; }
 /* Keep inspected merchandise visible while the catalogue and warehouse scroll independently. */
 /* QOL panels share the accepted palette; compact metadata uses the text face. */
 .shop-layout h3, .departure-check p, .shop-placement .placement-hint {
-  font-family:"Microsoft YaHei","PingFang SC",sans-serif;
+  font-family:var(--ui-sys);
 }
 html:not(.mobile) .shop-layout h3 { font-size:14px; }
 .shop-buffer h3 { background:var(--surface); }
@@ -141,7 +141,16 @@ html:not(.mobile) .shop-details .item-actions { grid-column:3; grid-row:1/4; }
 
 /* Keep the gear grids visible when region selection and departure checks share the footer. */
 @media (max-width:1500px) {
-  html:not(.mobile) .bottom-bar .departure-note strong { font-size:14px; }
-  html:not(.mobile) .bottom-bar .departure-note p { font-size:12px; }
-  html:not(.mobile) .bottom-bar .seed-label { font-size:14px; white-space:nowrap; }
+  html:not(.mobile) .bottom-bar .departure-note strong { font:600 var(--ui-fs-m)/1.5 var(--ui-sys); }
+  html:not(.mobile) .bottom-bar .departure-note p { font:var(--ui-fs-s)/1.5 var(--ui-sys); }
+  html:not(.mobile) .bottom-bar .seed-label { font:var(--ui-fs-m) var(--ui-sys); white-space:nowrap; }
 }
+
+/* Type roles (#163 batch 2, ui-tokens.css): this page inherits the pixel face from body, which is only drawn at its native
+   16 / 32 px. The smaller controls and notes set in style.css take the system face; headings and key numbers stay 16 px. */
+.shop-browse button, .shop-browse small, .quest-footer div > span, .quest-footer button, .item-actions button,
+.station-upgrade button, .save-controls h3, .save-actions button, .station-links button, .rpg-cards small, .station-signal,
+.section-title span, .grid .overflow-band span, .protected, .load-meter small, .equip strong, .item-heading .section-label,
+.item-facts dt, .quest-status .mono, .webgl-required p, .result .stamp, .shop-checkout span, .split-control,
+.shopping .shop-placement .placement-hint, .inventory-tools span { font-family:var(--ui-sys); }
+.rpg-main > h3, .facility-panel h3, .rpg-cards strong { font-size:16px; font-weight:400; }
