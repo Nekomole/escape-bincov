@@ -367,6 +367,18 @@ export class SynthAudio {
     this.tone(650, 0.19, 0.06, 'sine', 650, 0.25);
     this.hiss(0.2, 0.08, 1200, 0.5);
   }
+  /**
+   * The market freezer's two knocks (#83): two dull thuds 0.42 s apart. A hint only: the subtitle and the recall carry
+   * the whole line, so a muted game loses nothing.
+   */
+  knocks(spot?: Spot): void {
+    for (const at of [0, 0.42]) { this.tone(96, 0.14, 0.22, 'triangle', 44, at, spot); this.hiss(0.08, 0.18, 50, at, spot, false, 380); }
+  }
+  /** The call from the switch room (#83): a far, muffled voice that rises and breaks off twice; its words are subtitled. */
+  call(spot?: Spot): void {
+    this.tone(196, 0.5, 0.06, 'triangle', 262, 0, spot); this.hiss(0.46, 0.05, 260, 0, spot, false, 850);
+    this.tone(233, 0.62, 0.055, 'triangle', 165, 0.62, spot); this.hiss(0.56, 0.045, 260, 0.62, spot, false, 850);
+  }
   death(): void { this.tone(170, 1.5, 0.18, 'triangle', 24); this.hiss(0.8, 0.22, 100); }
   extract(): void { [330, 440, 550, 660].forEach((note, i) => this.tone(note, 0.55, 0.075, 'triangle', note, i * 0.17)); }
 }

@@ -15,12 +15,15 @@ import { worldKeyString } from '../raid-runtime/contract';
 import { insideFootprint } from './mall-dressing';
 import { enemyVoice } from './enemy-motion';
 import { timbreOfGun, timbreOfLook } from '../gun-timbre';
+import { MARKET_ANCHORS } from '../market-world';
 
 /** Other people's gunfire is quieter than the player's own, as the single shared report was (#75 H-02). */
 const ENEMY_SHOT = .55;
 
 export type SoundOut = Pick<SynthAudio, 'start' | 'stop' | 'shot' | 'step' | 'hit' | 'pickup' | 'click' | 'radio' | 'extract' | 'death'
-  | 'whiz' | 'impact' | 'dry' | 'heartbeat' | 'setRoomTone' | 'stow' | 'enemy'>;
+  | 'whiz' | 'impact' | 'dry' | 'heartbeat' | 'setRoomTone' | 'stow' | 'enemy' | 'knocks' | 'call'>;
+/** Where a market story sound comes from (#83): the freezer, and the switch room for the call heard at the cabinet. */
+const STORY_SOUND_AT: Record<string, { x: number; y: number }> = { 'ch01-sc-freezer': MARKET_ANCHORS['ch01-sc-freezer'], 'ch01-sc-call': MARKET_ANCHORS['ch01-sc-breaker'] };
 
 /** Closest distance from point p to the segment a-b. */
 function segmentDistance(ax: number, ay: number, bx: number, by: number, px: number, py: number) {
@@ -178,6 +181,13 @@ export class SampleSound {
         break;
       }
       case 'melee': if (e.attacker === 'player') this.out.shot('knife'); break;
+      // A market story cue (#83), only once its write succeeded; the host shows its text whatever the volume.
+      case 'story-cue': {
+        if (e.durability !== 'committed' || !e.sound) break;
+        const p = STORY_SOUND_AT[e.source], s = p ? this.spot(p.x, p.y) : undefined;
+        if (e.sound === 'knocks') this.out.knocks(s); else this.out.call(s);
+        break;
+      }
       // Blows only, of any size (R6-L2 names the cause): bleeding, pollution, thirst, hunger and a lowered health limit
       // are silent here; the HUD shows them.
       case 'hurt': {

@@ -194,6 +194,19 @@ html.mobile[data-coast-sample] #toast { bottom: calc(76px + var(--safe-bottom, 0
 .cs-state { font-family: var(--ui-sys); font-size: 12px; line-height: 16px; color: rgb(var(--ui-n12)); }
 /* The host keeps the radio between the status card and the task card (--radio-l/-r/-t); centred when there is room. */
 .cs-radio { position: absolute; left: var(--radio-l, 0px); right: var(--radio-r, 0px); top: var(--radio-t, 36px); margin: 0 auto; width: fit-content; max-width: min(560px, 70vw); padding: 6px 12px; background: rgb(var(--ui-n2) / .85); border-left: 3px solid rgb(var(--ui-n11)); font-size: 16px; line-height: 20px; color: rgb(var(--ui-n14)); }
+/* Market story line (#83): one short subtitle above the key bar, clear of a docked panel; never takes input. */
+.cs-story { position: absolute; left: 50%; bottom: var(--story-b, 52px); transform: translateX(-50%); width: max-content; max-width: min(560px, 62vw); padding: 6px 12px; background: rgb(var(--ui-n2) / .88); border-left: 3px solid var(--cs-accent); font-size: var(--ui-fs-px); line-height: 22px; color: rgb(var(--ui-n14)); pointer-events: none; z-index: 3; }
+.cs-story small { display: block; font: var(--ui-fs-s)/16px var(--ui-sys); color: var(--cs-muted); }
+.coast-sample.touch .cs-story { left: 12px; transform: none; bottom: var(--story-b, 76px); max-width: min(420px, 46vw); font: 14px/20px var(--ui-sys); }
+/* Over a full-screen panel: placed on its title block by the host (left, top, width, min-height). */
+.coast-sample .cs-story.over { bottom: auto; transform: none; max-width: none; background: rgb(var(--ui-n2)); z-index: 4; }
+.coast-sample.outro .cs-story { visibility: hidden; }
+.cs-hint-line { color: rgb(var(--ui-n14)) !important; }
+.cs-recalls { display: grid; gap: 8px; margin: 0 0 8px; }
+.cs-recall { padding: 6px 10px; background: rgb(var(--ui-n1)); border: 1px solid var(--cs-line); }
+.cs-recall header { display: flex; gap: 10px; align-items: baseline; }
+.cs-recall header small { font: var(--ui-fs-s)/16px var(--ui-sys); color: var(--cs-muted); }
+.cs-recall p { margin: 2px 0 0; }
 .cs-info { position: absolute; right: 12px; top: 10px; display: grid; gap: 4px; justify-items: end; max-width: 280px; pointer-events: auto; }
 .coast-sample .cs-info button { font-size: 14px; font-family: var(--ui-sys); padding: 4px 10px; background: linear-gradient(rgb(var(--ui-n2) / .88), rgb(var(--ui-n2) / .77)); border-color: rgb(var(--ui-n8)); color: rgb(var(--ui-n14)); }
 .cs-info details { background: linear-gradient(rgb(var(--ui-n2) / .88), rgb(var(--ui-n2) / .77)); border: 1px solid rgb(var(--ui-n5)); padding: 4px 10px; font-family: var(--ui-sys); font-size: 13px; line-height: 18px; color: rgb(var(--ui-n14)); }
@@ -203,6 +216,8 @@ html.mobile[data-coast-sample] #toast { bottom: calc(76px + var(--safe-bottom, 0
 @media (max-height: 480px) { .coast-sample.touch .cs-toast { top: auto; bottom: 80px; } }
 /* On short phones an opened task list scrolls instead of running into the touch buttons (the 40 px toggle above it included). */
 @media (max-height: 480px) { .coast-sample.touch .cs-info [data-quest-list] { max-height: calc(100vh - 192px); overflow-y: auto; } }
+/* The 见闻 button (#83) adds one 48 px row and its 4 px gap above the task card: the list gives that height back. */
+@media (max-height: 480px) { .coast-sample.touch .cs-info:has(> [data-recall]:not([hidden])) [data-quest-list] { max-height: calc(100vh - 244px); } }
 .cs-info small { color: var(--cs-muted); }
 @media (max-height: 480px) {
   .cs-radio { top: var(--radio-t, 30px); font-family: var(--ui-sys); font-size: 12px; line-height: 16px; }

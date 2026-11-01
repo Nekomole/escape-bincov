@@ -23,8 +23,9 @@ const writeReport = () => writeFile(resolve(out, 'loot-browser-report.json'), JS
 // A gun item carries its factory state (save v6).
 const item = (uid, id, qty = 1, x = 0, y = 0) => ({ uid, id, qty, x, y, ...(['pistol', 'shotgun', 'carbine'].includes(id) ? { gun: { parts: [], devices: { laser: false, light: false } } } : {}) });
 /** The seed's original records from the game's own generator (tsx in a child process). */
+/** A new street raid is the market story world (#83): its configuration for a fresh save, which owns no repair parts. */
 function seedLoot(seed) {
-  const code = `import('./src/building-world.ts').then(m => { const c = m.buildingRunConfig(${Number(seed)}), all = [...c.loot, ...c.containers.flatMap(x => x.items)];
+  const code = `Promise.all([import('./src/market-world.ts'), import('./src/domain.ts')]).then(([m, D]) => { const c = m.marketRunConfig(${Number(seed)}, D.newSave()), all = [...c.loot, ...c.containers.flatMap(x => x.items)];
     console.log(JSON.stringify({ records: all.length, crates: c.containers.length, units: all.reduce((n, i) => n + i.qty, 0) })); })`;
   return JSON.parse(execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], { cwd: resolve('.'), encoding: 'utf8' }));
 }

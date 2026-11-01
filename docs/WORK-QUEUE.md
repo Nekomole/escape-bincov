@@ -1,5 +1,7 @@
 # 当前任务入口
 
+当前授权任务：**[#83 市场剧情底层](tasks/market-story-core.md)**，[PR #168](https://github.com/xuys2025/escape-bincov/pull/168)，`feat/story-market-83`，基线 main `8a28da9873e5188e13053f894e5b6bbb0ae10dc8`。2026-11-01 维护者明确“做非前端表现的事情，前端让 Opus 专家做”。本阶段负责确定补给、见闻/选择/对白条件、单记录存档迁移与 Runtime 接口；Opus 接续场景、面板、字幕/音效和输入。同日 Opus 在同一分支接上前端并启用默认市场出击（[前端接入](tasks/market-story-core.md#前端接入opus2026-11-01)）；11-02 已同步 main `2b3fd7e9`（含 #170 统一样式与面板框、#171 任务物品绿框），真人试玩仍待做。#83 总单保持开放，同一承接 PR 完成后续接线与验收；#164 是文学文档交付，#161 是独立任务节奏线，不在本分支合并或改动。
+
 本轮原子任务：**[任务物品绿框高亮](tasks/quest-item-highlight.md)**（维护者 2026-11-02 需求），分支 `feat/quest-item-highlight`，基线 main `33adc85b`。任务要的物品在格子里标绿框、浅绿底和角标：背包、安全箱、仓库、待卖里的任务交付前一直标；物资箱、尸体、商人货架、待买里的只在还没凑够时标，“已有”按任务卡的数（行动中仓库加身上）。行动搜刮面板和院子整备、商店都接入，旧版页签不变；只改显示，存档与规则不变。验证见任务页；准确 head、CI 与合并以承接 PR 为准，真人/真机未验。
 
 已完成原子任务：**[前端精致度第二批：共用变量、固定面板框、格子随屏幕放大](tasks/ui-polish-batch2.md)**（[#163](https://github.com/xuys2025/escape-bincov/issues/163) 第二批），[PR #170](https://github.com/xuys2025/escape-bincov/pull/170) 已合入 main `33adc85b`（含第一批 [PR #165](https://github.com/xuys2025/escape-bincov/pull/165)），分支 `fix/ui-polish-batch2`，基线 main `ca59605e`。维护者从三套原型里选了配色 A（院子琥珀）和“居中统一大框”：颜色、字号、间距收进 `src/ui-tokens.css`，各样式表不再写死颜色；院子七个页签（含出击）共用一个居中框；桌面文字不小于 12px，像素字只用 16/32px；1920 下院子、旧页签商店、行动背包格子放大到 72–73px。只改显示，存档与规则不变；真人/真机未验。

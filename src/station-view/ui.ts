@@ -1,5 +1,6 @@
 import * as D from '../domain';
-import type { Attribute, Facility, HideoutRuntime, HideoutSnapshot, Merchant, Recipe, Result, RunWorld, ShopSession, ShopSource, Source } from '../hideout-runtime/contract';
+import type { Attribute, Facility, HideoutRuntime, HideoutSnapshot, Merchant, Recipe, Result, RunWorld, ShopSession, ShopSource, Source, StoryConversation } from '../hideout-runtime/contract';
+import { STORY_ENTRIES, type StoryEntry } from '../story-dialogue';
 import type { Scope } from '../view-lifecycle/scope';
 import { CATALOG_W, firstShopCell, questUses } from '../shop';
 import { questMarks } from '../qol';
@@ -110,6 +111,19 @@ export class UI {
   private perkAttr: Attribute | null = null;
   /** A perk change whose write failed and waits for the retry (its name for the storage dialog), or ''. */
   private perkPending = '';
+  /** The radio panel's view; a new opening of the panel starts on the task cards. */
+  private radioTab: P.RadioTab = 'tasks';
+  /**
+   * The open conversation with 小蔡 (HideoutRuntime.openStory) and the topic it was opened on. Only a cursor: a reply
+   * advances after its choice is saved, and closing it (panel closed, view left, Esc) saves and chooses nothing.
+   */
+  private talk: StoryConversation | null = null;
+  private talkEntry: StoryEntry | null = null;
+  private talkTitle = '';
+  /** The last choice's failure, shown in the box's reserved line until the next choice or topic. */
+  private talkError = '';
+  /** A conversation kept over the power sequence: its reply to the delivery shows once the lamps are on (resumeTalk). */
+  private heldTalk: { talk: StoryConversation; entry: StoryEntry; title: string } | null = null;
   summary: D.RunSummary | null = null;
   private drag: GridDrag;
   private lastSnapshotRev = -1;
@@ -158,6 +172,7 @@ export class UI {
     if (this.kind === 'gunsmith' && kind !== 'gunsmith' && this.bench && !this.bench.requestClose()) { this.render(); return; }
     if (kind !== 'gunsmith') { this.bench?.dispose(); this.bench = null; this.benchFrom = null; }
     const was = this.kind;
+    if (kind !== 'radio' || was !== 'radio') { this.dropTalk(); this.radioTab = 'tasks'; }
     // The panel is painted anew: a drag from the old grids ends here instead of waiting for a release.
     this.drag.cancel();
     this.kind = kind; this.station = station; this.selected = null;
@@ -177,7 +192,7 @@ export class UI {
       this.closeBench(); return;
     }
     if ((this.kind === 'arms' || this.kind === 'med') && this.shop?.view().dirty) { this.toast('待买或待卖区还有物品，先结算或清空。', 'error'); this.host.sound('error'); return; }
-    this.drag.cancel();
+    this.drag.cancel(); this.dropTalk();
     this.kind = null; this.station = null; this.shop = null; this.selected = null;
     this.panel.hidden = true; this.modal.hidden = true; this.panel.innerHTML = ''; this.modal.innerHTML = '';
     this.root.classList.remove('has-panel', 'has-modal');
@@ -209,6 +224,62 @@ export class UI {
   }
   /** Leave with a dirty cart allowed (the cart is only a list; nothing was paid). */
   discard() { this.shop?.reset(); this.dialog = null; this.dialogEl.hidden = true; this.close(); }
+
+  // ---------- 小蔡 (#83) ----------
+  /** Release the conversation cursor; an unanswered question stays unanswered. */
+  private dropTalk() { this.talk?.close(); this.talk = null; this.talkEntry = null; this.talkTitle = ''; this.talkError = ''; }
+  private openTalk(entry: StoryEntry) {
+    this.dropTalk();
+    const talk = STORY_ENTRIES.includes(entry) ? this.rt.openStory(entry) : null;
+    this.radioTab = 'talk';
+    if (!talk) { this.toast('现在没法和小蔡说这个。', 'error'); this.host.sound('error'); this.render(); return; }
+    this.talk = talk; this.talkEntry = entry; this.talkTitle = P.topicLabel(entry, this.rt.story()); this.host.sound('pick'); this.render();
+  }
+  /**
+   * One option. The next reply shows only after its write succeeded; a failed write keeps the same topic and options
+   * (the storage dialog explains it), and after 重试保存 the player presses the same option again.
+   */
+  private say(option: string) {
+    const talk = this.talk; if (!talk) return;
+    const r = talk.choose(option);
+    // A delivery restores power: the yard closed the panel for the lamp sequence and holds this conversation.
+    if (this.heldTalk?.talk === talk) return;
+    if (!r.ok) {
+      this.talkError = r.reason === 'stale' ? '情况已经变了，请重新选话题。' : `没有记下：${r.message}`;
+      this.host.sound('error');
+      if (r.reason === 'storage' || r.reason === 'conflict') this.showStorage();
+      this.render(); return;
+    }
+    this.talkError = '';
+    const next = talk.view();
+    if (!next) { this.dropTalk(); this.host.sound('close'); } else this.host.sound(next.id === 'ch01-dlg-submit' ? 'deliver' : 'pick');
+    this.render();
+  }
+  /**
+   * The window lost focus or the page was hidden (switching windows, apps or tabs): end the conversation without
+   * answering, including one held over the power sequence. The talk page keeps its box and shows the topic list again,
+   * so a key pressed on returning cannot land on an answer that was on screen.
+   */
+  releaseTalk() {
+    const held = this.heldTalk; this.heldTalk = null; held?.talk.close();
+    if (!this.talk) return;
+    this.dropTalk();
+    if (this.kind === 'radio') this.render();
+  }
+  /** The yard is about to close the panel for the power sequence: keep the conversation for resumeTalk. */
+  holdTalk() {
+    if (this.talk && this.talkEntry) this.heldTalk = { talk: this.talk, entry: this.talkEntry, title: this.talkTitle };
+    this.talk = null; this.talkEntry = null; this.talkTitle = ''; this.talkError = '';
+  }
+  /** After the power sequence: back at the radio with 小蔡's reply to the delivery, if nothing else was opened meanwhile. */
+  resumeTalk() {
+    const held = this.heldTalk; this.heldTalk = null;
+    if (!held) return;
+    if (this.open || !held.talk.view()) { held.talk.close(); return; }
+    this.show('radio', STATIONS.find(s => s.id === 'radio') ?? null);
+    if (this.kind !== 'radio') { held.talk.close(); return; }
+    this.talk = held.talk; this.talkEntry = held.entry; this.talkTitle = held.title; this.radioTab = 'talk'; this.render();
+  }
 
   /** Phones and short windows get the paired-container layout. */
   get compact() { return innerWidth < 900 || innerHeight < 560; }
@@ -293,7 +364,15 @@ export class UI {
         const outside = [s.profile.bag, s.profile.safe].reduce((n, inv) => n + inv.items.filter(i => !i.relief && (D.ITEMS[i.id]?.sell ?? 0) > 0).length, 0);
         body = this.compact ? P.shopCompactHtml(v, cell, this.selected, s.profile.cash, this.shopMode, outside, questMarks(s.profile, null)) : P.shopHtml(v, cell, sel, s.profile.cash, this.shopMode, outside, questMarks(s.profile, null)) + P.detailsHtml(item, this.selected?.src ?? null, 'shop', item ? questUses(s.profile, item.id) : [], s.profile); break;
       }
-      case 'radio': body = P.questsHtml(s); break;
+      case 'radio': {
+        const board = this.rt.story();
+        // A conversation the Runtime no longer serves (a conflict, an import that changed the facts) is closed here.
+        const reply = this.talk?.view() ?? null;
+        if (this.talk && !reply) this.dropTalk();
+        body = this.radioTab === 'talk' ? P.talkHtml(board, reply, this.talkEntry, this.talkTitle, this.talkError)
+          : this.radioTab === 'recall' ? P.recallHtml(board) : P.questsHtml(s, P.talkEntryHtml(board));
+        break;
+      }
       case 'generator': body = P.generatorHtml(s); break;
       case 'deploy': body = P.deployHtml(s, this.rt.departure(), this.world, this.seed, this.worlds, this.regionPreview, this.countyArt, innerWidth < 600); break;
       case 'facility': body = (this.facility === 'workbench' ? P.benchEntryHtml() : '') + `<nav class="seg facs">${FACILITY_ORDER.map(f => P.btn(`${FACILITY_LABEL[f]}${s.base.facilities[f] ? ` <small>${s.base.facilities[f]} 级</small>` : ''}`, `fac:${f}`, f === this.facility ? 'on' : '')).join('')}</nav>` + P.facilityHtml(this.rt.facility(this.facility), s, this.rt.trainingProgress()); break;
@@ -594,6 +673,9 @@ export class UI {
       case 'cart-settle': this.settle(); break;
       case 'sale-confirm': if (this.dialog?.kind === 'sale') this.settle(this.dialog.token); break;
       case 'quest': this.result(this.rt.submitQuest(a1), 'deliver'); this.render(); break;
+      case 'radio-tab': if (a1 !== this.radioTab) { if (a1 !== 'talk') this.dropTalk(); this.radioTab = a1 as P.RadioTab; this.host.sound('pick'); this.render(); } break;
+      case 'talk': this.openTalk(a1 as StoryEntry); break;
+      case 'say': this.say(a1); break;
       case 'build': this.result(this.rt.build(a1 as Facility), 'build'); this.render(); break;
       case 'enqueue': this.result(this.rt.enqueue(a1 as Recipe)); this.render(); break;
       case 'premium': this.result(this.rt.craftPremium(a1), 'build'); this.render(); break;
