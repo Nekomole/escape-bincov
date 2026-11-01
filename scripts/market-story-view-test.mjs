@@ -95,6 +95,17 @@ const talk = () => page.evaluate(() => {
     topics: [...r.querySelectorAll('.talk-topics button')].map(t => [t.dataset.act, t.textContent, t.disabled]) };
 });
 const storyOf = async () => (await record()).story;
+// #170's type rules (station H20): desktop text is at least 12 px and the pixel face only runs at 16 / 32 px. Item
+// names inside grid cells scale with the cell and are left out, as in H20.
+const typeOff = (where, sel) => page.evaluate(([where, sel]) => {
+  const root = where === 'yard' ? document.querySelector('#station-yard').shadowRoot : document;
+  return [...root.querySelectorAll(sel)].flatMap(box => [box, ...box.querySelectorAll('*')])
+    .filter(n => !n.closest('.item') && n.getBoundingClientRect().width && [...n.childNodes].some(c => c.nodeType === 3 && c.textContent.trim()))
+    .map(n => { const cs = getComputedStyle(n); return { face: cs.fontFamily.split(',')[0].replace(/["']/g, '').trim(), size: parseFloat(cs.fontSize), text: n.textContent.trim().slice(0, 12) }; })
+    .filter(x => x.size < 11.95 || (x.face === 'Bincov Text' && x.size !== 16 && x.size !== 32));
+}, [where, sel]);
+/** The yard's shared panel frame (#170): the same box on every tab and sub-page. */
+const frame = () => page.evaluate(() => { const b = document.querySelector('#station-yard').shadowRoot.querySelector('.panel').getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map(Math.round); });
 
 // ---------------- raid ----------------
 async function raidFromTabs({ size, mobile, seed = '42', volume = null } = {}) {
@@ -132,7 +143,8 @@ try {
     await until(() => window.__station.host.ui.kind === 'radio', 'radio panel');
     assert.equal(await ui('.talk-entry').isVisible(), true);
     await shot('M1-tasks-1280x720');
-    const before = JSON.stringify(await storyOf());
+    const before = JSON.stringify(await storyOf()), tasksFrame = await frame();
+    assert.deepEqual(await typeOff('yard', '.panel'), [], 'tasks page with the 小蔡 card: type');
     await press('[data-act="radio-tab:talk"]');
     let t = await talk(); assert.equal(t.lines.length, 1); assert.match(t.lines[0], /选一个话题/);
     assert.deepEqual(t.topics.find(x => x[0] === 'talk:call'), ['talk:call', '还有件事。', true], 'the call topic waits for the call');
@@ -143,6 +155,7 @@ try {
     await press('[data-act="say:location"]'); t = await talk(); assert.match(t.lines[0], /旧交易厅后头的配电区/); assert.deepEqual(t.box, idle);
     await press('[data-act="say:radio"]'); t = await talk(); assert.match(t.lines[0], /按两下通话键/);
     await shot('M1-talk-1280x720');
+    assert.deepEqual(await typeOff('yard', '.panel'), [], 'talk page: type'); assert.deepEqual(await frame(), tasksFrame, 'talk page: same frame');
     await page.keyboard.press('Escape'); await until(() => window.__station.host.ui.kind === null, 'closed');
     assert.equal(JSON.stringify(await storyOf()), before, 'reading and closing save nothing');
     return { box: idle };
@@ -170,6 +183,7 @@ try {
     const recall = await page.evaluate(() => [...document.querySelector('#station-yard').shadowRoot.querySelectorAll('.recall b')].map(b => b.textContent));
     assert.deepEqual(recall.sort(), ['冷柜响动', '市场总闸', '配电区的喊声'].sort());
     await shot('M2-recall-1280x720');
+    assert.deepEqual(await typeOff('yard', '.panel'), [], 'recall page: type');
     return { recall };
   });
 
@@ -230,6 +244,7 @@ try {
     await place(...SPOT.freezer); await until(() => window.__bincovSample.host.services.story().recall.length === 1, 'freezer clue');
     await page.waitForTimeout(250); h = await hud();
     assert.match(h.story, /冷柜响了两下，又停了。/); assert.deepEqual(h.cues, ['ch01-sc-freezer']);
+    assert.deepEqual(await typeOff('raid', '.coast-sample [data-story]'), [], 'subtitle: type');
     await shot('M6-freezer-1280x720');
     await place(...SPOT.cabinet); await page.waitForTimeout(300); h = await hud();
     assert.match(h.prompt, /搜刮 · 蔡建平 · 备用工具柜/);
@@ -248,6 +263,7 @@ try {
     await key('j'); h = await hud(); assert.equal(h.panel, 'recall');
     const recall = await page.evaluate(() => [...document.querySelectorAll('.coast-sample .cs-recall b')].map(b => b.textContent));
     assert.deepEqual(recall, ['冷柜响动', '配电区的喊声', '市场总闸']);
+    assert.deepEqual(await typeOff('raid', '.coast-sample [data-panel]'), [], 'recall panel: type');
     await shot('M6-recall-1280x720');
     await key('j'); assert.equal((await hud()).panel, null);
     const r = await record(); assert.deepEqual(r.story.currentRun.cues, ['ch01-sc-freezer', 'ch01-sc-call']);
@@ -322,9 +338,12 @@ try {
     for (const [size, mobile, name] of [[[1920, 1080], false, '1920x1080'], [[844, 390], true, '844x390']]) {
       await yard({ size, mobile, story: ['breaker-down', 'heard-call'] });
       if (mobile && !await ui('[data-quick="radio"]').isVisible()) await press('[data-quickmenu]', true);
-      await press('[data-quick="radio"]', mobile); await press('[data-act="radio-tab:talk"]', mobile);
+      await press('[data-quick="radio"]', mobile);
+      if (!mobile) await shot(`M11-tasks-${name}`);
+      await press('[data-act="radio-tab:talk"]', mobile);
       await press('[data-act="talk:call"]', mobile);
       const t = await talk(); assert.deepEqual(t.options, ['say:tell', 'say:defer', 'say:exit']);
+      if (!mobile) assert.deepEqual(await typeOff('yard', '.panel'), [], `${name} talk page: type`);
       await shot(`M11-call-${name}`);
     }
     await raidFromTabs({ size: [1920, 1080], seed: '42' });
