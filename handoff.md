@@ -1,6 +1,15 @@
 ## 2026-10-31 · 楼梯标签贴着自己的楼梯（#26 F07/F11）
 
-[PR #169](https://github.com/xuys2025/escape-bincov/pull/169)，分支 `claude/sad-tharp-f6c48e`，基线 main `278b7e24`（已同步 `8a28da98`）。#154 时登记的余项：站在楼梯旁时旧规则（S04b 那条）把楼梯标签挪到角色脚下，探针扫居民楼全部站位，最远离楼梯 66 像素，会压到别的门的地面标记、正对门的通行带和暖光；二楼标签平时就压在储藏室门的标记上，地下标签会被「E 开门」盖住。做了三个本地原型（先下后上 / 先左右 / 固定上方），维护者选了 A。`stairLabelPlace` 只在楼梯图四周选位置：下 → 上 → 离玩家远的一侧 → 另一侧，不盖玩家和正对门的暖光、通行带，门标记、提示、别的楼梯和标签能避就避；宿主把量到的 HUD 字框和提示框写回视图，碰到可见敌人仍只隐藏（S03c）。只改显示。新增 S07（两档桌面和触屏子集都跑；main 构建三档都只有 S07 失败）。细节、验证与截图见[任务记录](docs/tasks/stair-label-beside-stairs.md)；未合并、未发布，真人/真机未验；二楼、地下楼梯图被墙挡住属于原有美术问题，没改。
+[PR #169](https://github.com/xuys2025/escape-bincov/pull/169)，分支 `claude/sad-tharp-f6c48e`，基线 main `278b7e24`（已同步 `8a28da98`、`ca59605e`）。#154 时登记的余项：站在楼梯旁时旧规则（S04b 那条）把楼梯标签挪到角色脚下，探针扫居民楼全部站位，最远离楼梯 66 像素，会压到别的门的地面标记、正对门的通行带和暖光；二楼标签平时就压在储藏室门的标记上，地下标签会被「E 开门」盖住。做了三个本地原型（先下后上 / 先左右 / 固定上方），维护者选了 A。`stairLabelPlace` 只在楼梯图四周选位置：下 → 上 → 离玩家远的一侧 → 另一侧，不盖玩家和正对门的暖光、通行带，门标记、提示、别的楼梯和标签能避就避；宿主把量到的 HUD 字框和提示框写回视图，碰到可见敌人仍只隐藏（S03c）。只改显示。新增 S07（两档桌面和触屏子集都跑；main 构建三档都只有 S07 失败）。细节、验证与截图见[任务记录](docs/tasks/stair-label-beside-stairs.md)；维护者 11-01 授权合并，以 PR 状态为准；真人/真机未验；二楼、地下楼梯图被墙挡住属于原有美术问题，没改。
+
+## 2026-10-31 · 两份行动报告合一（#163 待定项）
+
+[PR #166](https://github.com/xuys2025/escape-bincov/pull/166)，分支 `fix/one-raid-report`，基线 main `278b7e24`。核对发现结算写入、写入失败重试、备份导出和撤离/死亡音效都在局内「正在保存结算」面板，两份报告只负责显示（#163 原写“结算页负责音效与重试落点”不准确）。做了对照表（A 保留旧结算页 / B 保留院子报告 / C 合并原型，三尺寸真实截图），维护者选 B，并同意不等 #165 先做。
+
+- 实现：`coast-view/sample.ts` 的 `finish` 改调页面 `settled` → `returnToStation`，结局动画后直接走进院门、只弹院子报告。旧结算页只在页签入口或 `returnToBase` 被拒时兜底，从它返回用 `returnToStation(true)`，不再弹第二份；院子起不来时报告在页签界面以对话框出现。存档规则不变。
+- 测试：7 个院子模式脚本改测新流程；`yard-entry.mjs` 新增 `watchOldPage` / `yardReport`（断言途中没画旧页面）与 `atRaidRelease` / `releasedState`（院子紧接着接管 Pixi 应用，停放状态改在释放瞬间读，回收检查放到院子起来之后）；station 新增 G8/G9/G10 兜底反例。
+- 验证（本机 Chrome，构建 `2e4eb2aa…`）：1113 单测、package、139 工程守卫；`test:station` 84/84，save-browser 17/17，raid-default 11/11，coast-render-targets 5/5，station-capability 4/4，browser、ui、systems、station-relief/tier1/tier2、hud-release、desktop-input、mobile 通过。station-round2-recheck（J,K,R）4/8、coast-lifecycle（review 类）1/5，与 main 原脚本逐项相同，改动处的检查通过。详见[任务页](docs/tasks/one-raid-report.md)。
+- 未做/待办：#165 合并后同步 main 重跑；真人/真机未验；院子报告没有“进度已保存”这句（未要求改）。
 
 ## 2026-10-31 · 官网首页：Pages 根目录是官网，游戏移到 `play/`
 
