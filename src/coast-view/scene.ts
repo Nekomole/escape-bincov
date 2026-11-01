@@ -1086,9 +1086,11 @@ export class CoastView {
 
   /** A rainbow tracer's hue now: it turns about one and a half times a second, each round from its own start. */
   private hue(uid: string) {
-    let h = 0;
-    for (let i = 0; i < uid.length; i++) h = (h * 31 + uid.charCodeAt(i)) >>> 0;
-    return (h % 1000) / 1000 + this.time * 1.5;
+    // A well-mixed hash: rounds fired one after another (uids a step apart) start far apart on the wheel.
+    let h = 0x811c9dc5;
+    for (let i = 0; i < uid.length; i++) h = Math.imul(h ^ uid.charCodeAt(i), 0x01000193);
+    h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12;
+    return (h >>> 0) / 4294967296 + this.time * 1.5;
   }
 
   private updateExit(f: ViewFrame) {
