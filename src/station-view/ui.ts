@@ -3,6 +3,7 @@ import type { Attribute, Facility, HideoutRuntime, HideoutSnapshot, Merchant, Re
 import { STORY_ENTRIES, type StoryEntry } from '../story-dialogue';
 import type { Scope } from '../view-lifecycle/scope';
 import { CATALOG_W, firstShopCell, questUses } from '../shop';
+import { questMarks } from '../qol';
 import { STATIONS, type Station, type StationId } from './layout';
 import { GridDrag, type DragHooks } from './grid';
 import { esc } from '../html';
@@ -361,7 +362,7 @@ export class UI {
         const v = this.shop!.view(); const item = this.selected ? (v[this.selected.src === 'merchant' ? 'catalog' : this.selected.src as 'buy' | 'sell' | 'stash'].items.find(i => i.uid === this.selected!.uid) ?? null) : null;
         // Sellable stacks still in the bag or safe: this shop sells from the stash only, so its header says so.
         const outside = [s.profile.bag, s.profile.safe].reduce((n, inv) => n + inv.items.filter(i => !i.relief && (D.ITEMS[i.id]?.sell ?? 0) > 0).length, 0);
-        body = this.compact ? P.shopCompactHtml(v, cell, this.selected, s.profile.cash, this.shopMode, outside) : P.shopHtml(v, cell, sel, s.profile.cash, this.shopMode, outside) + P.detailsHtml(item, this.selected?.src ?? null, 'shop', item ? questUses(s.profile, item.id) : [], s.profile); break;
+        body = this.compact ? P.shopCompactHtml(v, cell, this.selected, s.profile.cash, this.shopMode, outside, questMarks(s.profile, null)) : P.shopHtml(v, cell, sel, s.profile.cash, this.shopMode, outside, questMarks(s.profile, null)) + P.detailsHtml(item, this.selected?.src ?? null, 'shop', item ? questUses(s.profile, item.id) : [], s.profile); break;
       }
       case 'radio': {
         const board = this.rt.story();

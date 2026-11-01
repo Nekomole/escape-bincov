@@ -366,5 +366,40 @@ try {
     assert.equal(await raw(), before, 'tabs and lists never write the save');
     return { base, rows, sold };
   });
+  // Maintainer 2026-11-02 (qol.questMarks): quest items ring green. The three pump parts the repair quest asks for are
+  // already in the stash, so the counter's pump parts go plain while its coils and fuses (still short) ring, and the held
+  // parts keep their ring in the stash, the sell list and the gear panel. Nothing here writes the save.
+  for (const size of [[1280, 720], [1920, 1080], [844, 390]]) await check(`quest rings ${size.join('x')} counter, stash and gear`, async () => {
+    await open(size, 'goods-scrap');
+    const compact = size[0] < 900, before = await raw();
+    const rings = grid => page.evaluate(grid => Object.fromEntries([...document.querySelector('#station-yard').shadowRoot.querySelectorAll(`[data-grid="${grid}"] .item`)]
+      .map(el => [el.dataset.uid, el.classList.contains('need')])), grid);
+    const look = (grid, uid) => yard(`[data-grid="${grid}"] [data-uid="${uid}"]`).evaluate(el => ({
+      ring: getComputedStyle(el, '::before').borderTopColor, flag: getComputedStyle(el, '::after').borderLeftColor, label: el.getAttribute('aria-label') }));
+    await itemTarget('merchant', await uidOf('wire'));
+    const counter = await rings('merchant'), uid = { scrap: await uidOf('scrap'), wire: await uidOf('wire'), fuse: await uidOf('fuse'), pistol: await uidOf('pistol') };
+    assert.deepEqual([counter[uid.scrap], counter[uid.wire], counter[uid.fuse], counter[uid.pistol]], [false, true, true, false], 'three pump parts held: only the short coils and fuses ring on the counter');
+    const wire = await look('merchant', uid.wire);
+    assert.deepEqual([wire.ring, wire.flag], ['rgb(144, 194, 138)', 'rgb(144, 194, 138)'], 'green ring and corner flag'); assert.match(wire.label, /^绝缘线圈 × \d+，任务需要$/);
+    assert.notEqual((await look('merchant', uid.scrap)).ring, 'rgb(144, 194, 138)');
+    if (size[0] === 1280) await shot('quest-rings-1280x720-counter');
+    if (compact) await yard('[data-act="mode:sell"]').click();
+    let stash = await rings('stash');
+    assert.deepEqual([stash['st-scrap'], stash['st-watch']], [true, false], 'held pump parts keep their ring, the watch stays plain');
+    if (compact) await shot('quest-rings-844x390-stash');
+    await (await itemTarget('stash', 'st-scrap')).item.dblclick();
+    await yard('[data-grid="sell"] [data-uid="st-scrap"]').waitFor();
+    assert.equal((await rings('sell'))['st-scrap'], true, 'a held quest item on the sell list keeps its ring');
+    assert.equal(await raw(), before, 'rings and lists never write the save');
+    if (compact) return { counter, stash };
+    // Clear the lists (a dirty cart asks before leaving), then the gear panel.
+    await yard('[data-act="cart-reset"]').click(); await page.waitForFunction(() => !window.__station.host.ui.shop.view().dirty);
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => document.querySelector('#station-yard').shadowRoot.querySelector('.panel').hidden);
+    await yard('[data-quick="gear"]').click(); await itemTarget('stash', 'st-scrap');
+    stash = await rings('stash');
+    assert.deepEqual([stash['st-scrap'], stash['st-watch']], [true, false], 'the gear panel rings the held pump parts too');
+    await shot(`quest-rings-${size.join('x')}-gear`);
+    return { counter, stash };
+  });
   assert.deepEqual(filter.problems(report.checks.length), [], '--only: every prefix must match a check and at least one check must run');
 } finally { try { await throttleSession?.detach(); } finally { await context?.close(); await browser.close(); } }

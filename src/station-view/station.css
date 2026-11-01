@@ -166,6 +166,10 @@ button.on { border-color: var(--amber); color: var(--amber2); }
 .item.k-valuable::before { border-color: rgb(var(--ui-a)); background: rgb(var(--ui-n5)); }
 .item.k-quest::before { border-color: rgb(var(--ui-b)); background: rgb(var(--ui-n4)); }
 .item.relief::before { border-style: dashed; }
+/* Quest items still needed (qol.questMarks via gridHtml): green ring, tinted cell and a flag in the free top-left corner
+   (label at the bottom, count top right); hover and selection below override the fill and the ring. */
+.item.need::before { background: rgb(var(--ui-g-bg)); border-color: rgb(var(--ui-g)); box-shadow: inset 0 0 0 1px rgb(var(--ui-g)); }
+.item.need::after { content: ''; position: absolute; left: 2px; top: 2px; border: 5px solid transparent; border-top-color: rgb(var(--ui-g)); border-left-color: rgb(var(--ui-g)); pointer-events: none; }
 .item.sel::before, .item:focus-visible::before { border-color: var(--amber2); box-shadow: inset 0 0 0 1px var(--amber2); }
 .item:hover::before { background: rgb(var(--ui-n6)); }
 .item.lifted { opacity: .25; }

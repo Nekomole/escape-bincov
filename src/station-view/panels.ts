@@ -10,6 +10,7 @@ import { shopQuote, type ShopQuote, type ShopSource } from '../shop';
 import { itemArt } from './items';
 import { itemPicture } from '../art/item-images';
 import { gridHtml } from './grid';
+import { questMarks, type QuestMarks } from '../qol';
 import { esc } from '../html';
 import { SUPPLY_IDS } from '../rpg';
 
@@ -56,7 +57,7 @@ const charmRow = (charm: string | null) => charm ? `<div class="charm">${icon(ch
 export const gearActions = (p: Readonly<D.SaveDataV1>, hint = true) => `<div class="gear-actions">${btn('背包全部入库', 'stash-all', '', p.bag.items.length ? 'title="背包全部移入仓库，空间不足时全部留在原处；装备与安全箱不变"' : 'disabled title="背包是空的"')}${btn('整理仓库', 'sort-stash', '', p.stash.items.length ? 'title="只整理仓库：合并同类堆叠，大件优先排列，必要时旋转"' : 'disabled title="仓库是空的"')}${hint ? '<small>入库空间不足时全部留在原处；装备与安全箱不变。</small>' : ''}</div>`;
 
 export function gearHtml(s: HideoutSnapshot, cell: number, selected: string | null, departure: { weight: number; carry: number }, details = '') {
-  const p = s.profile, e = p.equipment, w = D.equippedWeapon(e);
+  const p = s.profile, e = p.equipment, w = D.equippedWeapon(e), marks = questMarks(p, null);
   const ammo = w.ammo ? D.count(p.bag, w.ammo) : 0;
   const over = departure.weight > departure.carry;
   return `<div class="gear">
@@ -67,11 +68,11 @@ export function gearHtml(s: HideoutSnapshot, cell: number, selected: string | nu
         <span>${e.weapon ? [w.magazine ? `弹匣 ${e.ammo} / ${w.magazine}` : '没装弹匣', e.relief ? '救济' : '', `背包备用 ${w.ammo ? `${ammo} 发` : '—'}`].filter(Boolean).map(t => `<i>${t}</i>`).join(' · ') : '随身匕首 · 始终保留 · 把枪拖到这里装备'}</span></div>
         ${e.weapon ? `<span class="slot-acts">${btn('改装', `gunsmith:${e.weaponUid}`, 'mini')}${btn('卸下', 'unequip', 'mini')}</span>` : ''}
       </div>${charmRow(s.charm?.id ?? null)}
-      <h3><i>02</i>背包 <small>${occupied(p.bag)} / ${p.bag.w * p.bag.h} 格</small></h3>${gridHtml(p.bag, 'bag', cell, selected, { empty: '背包是空的' })}
+      <h3><i>02</i>背包 <small>${occupied(p.bag)} / ${p.bag.w * p.bag.h} 格</small></h3>${gridHtml(p.bag, 'bag', cell, selected, { empty: '背包是空的', marks })}
       <div class="meter ${over ? 'over' : ''}"><span>携行重量</span><b>${departure.weight.toFixed(1)} <small>/ ${departure.carry.toFixed(1)} kg</small></b><small class="meter-note">含装备与安全箱</small><i style="width:${Math.min(100, departure.weight / departure.carry * 100)}%"></i></div>
-      <h3><i>03</i>安全箱 <small>撤离失败也保留</small></h3>${gridHtml(p.safe, 'safe', cell, selected)}
+      <h3><i>03</i>安全箱 <small>撤离失败也保留</small></h3>${gridHtml(p.safe, 'safe', cell, selected, { marks })}
     </section>
-    <section class="col stash" style="width:${p.stash.w * cell}px"><h3><i>04</i>仓库 <small>${occupied(p.stash)} / ${p.stash.w * p.stash.h} 格${p.upgraded ? ' · 已扩建' : ''} · 出击时留在站里${overflowNote(p.stash)}</small></h3><div class="stash-scroll">${gridHtml(p.stash, 'stash', cell, selected, { empty: '仓库空置' })}</div>
+    <section class="col stash" style="width:${p.stash.w * cell}px"><h3><i>04</i>仓库 <small>${occupied(p.stash)} / ${p.stash.w * p.stash.h} 格${p.upgraded ? ' · 已扩建' : ''} · 出击时留在站里${overflowNote(p.stash)}</small></h3><div class="stash-scroll">${gridHtml(p.stash, 'stash', cell, selected, { empty: '仓库空置', marks })}</div>
       ${p.upgraded ? '' : `<div class="upgrade">${btn(`扩建仓库 · ¥ ${D.STASH_UPGRADE_COST}`, 'upgrade', '', !p.quests.repair ? 'disabled' : '')}<small>${p.quests.repair ? `扩建后增至 ${D.STASH_W * D.STASH_UPGRADED_ROWS} 格` : `完成「${D.QUESTS.repair.name}」后可扩建`}</small></div>`}
       ${details}
     </section>
@@ -83,15 +84,15 @@ export function gearHtml(s: HideoutSnapshot, cell: number, selected: string | nu
  * one switchable, so every grid keeps cells of at least 36 px and full item names.
  */
 export function gearCompactHtml(s: HideoutSnapshot, cell: number, selected: string | null, departure: { weight: number; carry: number }, paneB: 'stash' | 'safe', details: string) {
-  const p = s.profile, e = p.equipment, w = D.equippedWeapon(e), ammo = w.ammo ? D.count(p.bag, w.ammo) : 0, over = departure.weight > departure.carry;
+  const p = s.profile, e = p.equipment, w = D.equippedWeapon(e), ammo = w.ammo ? D.count(p.bag, w.ammo) : 0, over = departure.weight > departure.carry, marks = questMarks(p, null);
   const inv = paneB === 'stash' ? p.stash : p.safe;
   return `<div class="cgear">${gearActions(p)}
     <p class="gear-hint">主武器槽 · 选中枪械后点「装备主武器」</p>
     <div class="cbar"><div class="slot chip ${e.weapon ? '' : 'emptyslot'}" data-slot="weapon" aria-label="主武器槽" title="把仓库或背包里的枪拖到这里装备"><img alt="" src="${itemPicture({ id: e.weapon || 'knife', gun: e.gun }, 999, 999).url}"><b>${esc(w.name)}</b><span>${e.weapon ? `${w.magazine ? `${e.ammo} / ${w.magazine}` : '没装弹匣'}${w.ammo ? ` · 备用 ${ammo}` : ''}` : '拖枪到这里装备'}</span>${e.weapon ? `<span class="slot-acts">${btn('改装', `gunsmith:${e.weaponUid}`, 'mini')}${btn('卸下', 'unequip', 'mini')}</span>` : ''}</div>
       <div class="cweight ${over ? 'over' : ''}">携行 <b>${departure.weight.toFixed(1)}</b> / ${departure.carry.toFixed(1)} kg</div></div>${charmRow(s.charm?.id ?? null)}
     <div class="panes">
-      <section class="pane"><h3>背包 <small>${occupied(p.bag)} / ${p.bag.w * p.bag.h}</small></h3><div class="pane-scroll">${gridHtml(p.bag, 'bag', cell, selected, { empty: '背包是空的' })}</div></section>
-      <section class="pane"><nav class="seg tabs2">${btn(`仓库 <small>${occupied(p.stash)} / ${p.stash.w * p.stash.h}</small>${D.stashOverflow(p.stash).length ? ' <b class="bad">溢出</b>' : ''}`, 'pane:stash', paneB === 'stash' ? 'on' : '')}${btn('安全箱 <small>失败也保留</small>', 'pane:safe', paneB === 'safe' ? 'on' : '')}${paneB === 'stash' && !p.upgraded ? btn(`扩建 ¥ ${D.STASH_UPGRADE_COST}`, 'upgrade', 'mini grow', !p.quests.repair ? `disabled title="完成「${D.QUESTS.repair.name}」后可扩建"` : '') : ''}</nav><div class="pane-scroll">${gridHtml(inv, paneB, cell, selected, { empty: paneB === 'stash' ? '仓库空置' : '安全箱是空的' })}</div></section>
+      <section class="pane"><h3>背包 <small>${occupied(p.bag)} / ${p.bag.w * p.bag.h}</small></h3><div class="pane-scroll">${gridHtml(p.bag, 'bag', cell, selected, { empty: '背包是空的', marks })}</div></section>
+      <section class="pane"><nav class="seg tabs2">${btn(`仓库 <small>${occupied(p.stash)} / ${p.stash.w * p.stash.h}</small>${D.stashOverflow(p.stash).length ? ' <b class="bad">溢出</b>' : ''}`, 'pane:stash', paneB === 'stash' ? 'on' : '')}${btn('安全箱 <small>失败也保留</small>', 'pane:safe', paneB === 'safe' ? 'on' : '')}${paneB === 'stash' && !p.upgraded ? btn(`扩建 ¥ ${D.STASH_UPGRADE_COST}`, 'upgrade', 'mini grow', !p.quests.repair ? `disabled title="完成「${D.QUESTS.repair.name}」后可扩建"` : '') : ''}</nav><div class="pane-scroll">${gridHtml(inv, paneB, cell, selected, { empty: paneB === 'stash' ? '仓库空置' : '安全箱是空的', marks })}</div></section>
     </div>${details}</div>`;
 }
 
@@ -121,7 +122,7 @@ function ledgerHtml(c: CartView, cash: number, compact: boolean) {
     <div class="after"><dt>结算后</dt><dd class="${short ? 'bad' : ''}">${yuan(cash - c.totals.net)}</dd></div><div class="in"><dt>卖出 ${c.sell.items.length} 件</dt><dd>+ ${yuan(c.totals.sell)}</dd></div></dl>
     <div class="lmsg">${msg}</div><div class="acts">${btn(c.stale ? '刷新清单' : '清空', 'cart-reset', compact ? 'mini' : '', c.dirty || c.stale ? '' : 'disabled')}${btn(`结算${net}`, 'cart-settle', 'primary', c.dirty && !c.stale ? '' : 'disabled')}</div></div>`;
 }
-export function shopCompactHtml(c: CartView, cell: number, sel: { src: string; uid: string } | null, cash: number, mode: 'buy' | 'sell', outside = 0) {
+export function shopCompactHtml(c: CartView, cell: number, sel: { src: string; uid: string } | null, cash: number, mode: 'buy' | 'sell', outside = 0, marks?: QuestMarks) {
   const [a, b] = mode === 'buy' ? [['商人物品', c.catalog, 'merchant'], ['待买', c.buy, 'buy']] as const : [['仓库', c.stash, 'stash'], ['待卖', c.sell, 'sell']] as const;
   const selected = sel?.uid ?? null;
   // Compact layouts have no details panel: the pane holding the selected item shows its price in its one-line header.
@@ -134,8 +135,8 @@ export function shopCompactHtml(c: CartView, cell: number, sel: { src: string; u
   return `<div class="cshop">
     ${tradeTabs(c, mode, 'tabs2')}
     <div class="panes">
-      <section class="pane"><h3>${a[0]} <small>${picked(a[1], a[2]) ?? (mode === 'buy' ? '按包购买' : stashNote(outside) + overflowNote(c.stash))}</small></h3>${mode === 'buy' ? browseBar(c) : ''}<div class="pane-scroll">${gridHtml(a[1], a[2], cell, selected, mode === 'buy' ? { empty: '没有符合条件的商品' } : {})}</div></section>
-      <section class="pane"><h3>${b[0]} <small>${picked(b[1], b[2]) ?? `¥ ${mode === 'buy' ? c.totals.buy : c.totals.sell}${mode === 'buy' ? ` · ${checkoutNote}` : ''}`}</small></h3><div class="pane-scroll">${gridHtml(b[1], b[2], cell, selected, { empty: '拖到这里' })}</div></section>
+      <section class="pane"><h3>${a[0]} <small>${picked(a[1], a[2]) ?? (mode === 'buy' ? '按包购买' : stashNote(outside) + overflowNote(c.stash))}</small></h3>${mode === 'buy' ? browseBar(c) : ''}<div class="pane-scroll">${gridHtml(a[1], a[2], cell, selected, mode === 'buy' ? { empty: '没有符合条件的商品', marks } : { marks })}</div></section>
+      <section class="pane"><h3>${b[0]} <small>${picked(b[1], b[2]) ?? `¥ ${mode === 'buy' ? c.totals.buy : c.totals.sell}${mode === 'buy' ? ` · ${checkoutNote}` : ''}`}</small></h3><div class="pane-scroll">${gridHtml(b[1], b[2], cell, selected, { empty: '拖到这里', marks })}</div></section>
     </div>
     ${ledgerHtml(c, cash, true)}</div>`;
 }
@@ -160,17 +161,17 @@ function browseBar(c: CartView) {
  * money stay on the right in both tabs. Both panes are always laid out in the same cell (the other one hidden and
  * inert), so switching tabs never changes the panel's size or the cells under the pointer.
  */
-export function shopHtml(c: CartView, cell: number, selected: string | null, cash: number, mode: 'buy' | 'sell', outside = 0) {
+export function shopHtml(c: CartView, cell: number, selected: string | null, cash: number, mode: 'buy' | 'sell', outside = 0, marks?: QuestMarks) {
   const pane = (side: 'buy' | 'sell', html: string) => `<div class="tabpane ${side}"${side === mode ? '' : ' inert aria-hidden="true"'}>${html}</div>`;
   const line = (i: D.Item, src: 'buy' | 'sell') => `<li class="${src}">${icon(i.id, 18)}<span>${esc(D.ITEMS[i.id].name)}${i.qty > 1 ? ` × ${i.qty}` : ''}</span><b>${src === 'buy' ? '-' : '+'} ${yuan(shopQuote(src, i).total ?? 0)}</b></li>`;
   const lines = [...c.buy.items.map(i => line(i, 'buy')), ...c.sell.items.map(i => line(i, 'sell'))].join('');
   const buyNote = c.merchant === 'arms' ? '按包购买 · 配件每次出击后轮换' : '按包购买';
   return `<div class="shop" style="--cell:${cell}px;--stash-cols:${c.stash.w}">
     <section class="side theirs">${tradeTabs(c, mode, 'tradetabs')}<div class="tabpanes">
-      ${pane('buy', `${browseBar(c)}${gridHtml(c.catalog, 'merchant', cell, selected, { empty: '没有符合条件的商品' })}<h3>待买 <small title="${buyNote}">${yuan(c.totals.buy)} · ${buyNote}</small></h3>${gridHtml(c.buy, 'buy', cell, selected, { empty: '把要买的拖到这里' })}`)}
-      ${pane('sell', `<h3>待卖 <small>${yuan(c.totals.sell)} · 整组出售</small></h3>${gridHtml(c.sell, 'sell', cell, selected, { empty: '把要卖的拖到这里' })}<h3>本单明细</h3><ul class="lines">${lines || '<li class="none">还没有要买卖的东西</li>'}</ul>`)}
+      ${pane('buy', `${browseBar(c)}${gridHtml(c.catalog, 'merchant', cell, selected, { empty: '没有符合条件的商品', marks })}<h3>待买 <small title="${buyNote}">${yuan(c.totals.buy)} · ${buyNote}</small></h3>${gridHtml(c.buy, 'buy', cell, selected, { empty: '把要买的拖到这里', marks })}`)}
+      ${pane('sell', `<h3>待卖 <small>${yuan(c.totals.sell)} · 整组出售</small></h3>${gridHtml(c.sell, 'sell', cell, selected, { empty: '把要卖的拖到这里', marks })}<h3>本单明细</h3><ul class="lines">${lines || '<li class="none">还没有要买卖的东西</li>'}</ul>`)}
     </div></section>
-    <section class="side mine"><h3>我的仓库 <small>${stashNote(outside)}${overflowNote(c.stash)}</small></h3><div class="stash-scroll">${gridHtml(c.stash, 'stash', cell, selected)}</div>${ledgerHtml(c, cash, false)}</section>
+    <section class="side mine"><h3>我的仓库 <small>${stashNote(outside)}${overflowNote(c.stash)}</small></h3><div class="stash-scroll">${gridHtml(c.stash, 'stash', cell, selected, { marks })}</div>${ledgerHtml(c, cash, false)}</section>
   </div>`;
 }
 

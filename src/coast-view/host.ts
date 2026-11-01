@@ -11,7 +11,7 @@
 import { gunsmithArt } from '../art/gunsmith-hooks';
 import type { Application } from 'pixi.js';
 import * as D from '../domain';
-import { exitBearing, questProgress } from '../qol';
+import { exitBearing, questMarks, questProgress } from '../qol';
 import type { SaveSession, SessionState } from '../session';
 import type { CoastHandle, HudView, HurtCause, Interaction, PublishedView, StampedEvent, StorySource, TargetRef } from '../raid-runtime/contract';
 import { STORY_RECALL, STORY_WORLD } from '../story';
@@ -179,6 +179,7 @@ export class CoastSampleHost {
         close: () => this.closePanel(true),
         magazine: () => this.last?.frame.hud.weapon.mag ?? 0,
         used: () => this.sound.used(),
+        questMarks: () => questMarks(this.session.save, this.session.loadout),
       });
       this.wire();
       const tick = () => this.frame();

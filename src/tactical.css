@@ -23,6 +23,11 @@ button:disabled { color:rgb(var(--ui-n10)); background:rgb(var(--ui-n4)); border
 .item[data-kind="ammo"] { background:rgb(var(--ui-n5)); border-color:rgb(var(--ui-a-mid)); }
 .item[data-kind="quest"] { background:rgb(var(--ui-n5)); border-color:rgb(var(--ui-a-mid)); }
 .item[data-kind="valuable"] { background:rgb(var(--ui-n5)); border-color:rgb(var(--ui-a-mid)); }
+/* Quest items still needed (qol.questMarks, maintainer 2026-11-02): green ring, green-tinted cell and a flag in the free
+   bottom-left corner (label on top, count bottom right), so the mark reads without colour too. Hover and selection
+   below keep their amber border over it. */
+.item.need { background:rgb(var(--ui-g-bg)); border-color:rgb(var(--ui-g)); box-shadow:inset 0 0 0 1px rgb(var(--ui-g)); }
+.item.need::after { content:''; position:absolute; left:1px; bottom:1px; border:5px solid transparent; border-bottom-color:rgb(var(--ui-g)); border-left-color:rgb(var(--ui-g)); pointer-events:none; }
 .item:hover { background:rgb(var(--ui-n6)); border-color:rgb(var(--ui-a-hi)); }
 .item.selected { background:rgb(var(--ui-n6)); border-color:rgb(var(--ui-a-hi)); outline:1px solid rgb(var(--ui-a-hi)); }
 .item .item-label { top:0; bottom:auto; font:16px/18px var(--pixel); height:19px; color:rgb(var(--ui-n14)); background:rgb(var(--ui-n1) / .85); padding:0 1px; }
