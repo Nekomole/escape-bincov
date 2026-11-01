@@ -53,3 +53,27 @@ export function actorShown(frame: { actors: readonly { uid: string; regionId: st
 }
 
 export const isMall = (map: MapDef) => map.buildings.some(b => b.kind === 'mall');
+
+/** The four places a stair label may take next to its drawn stairs. */
+export type LabelSide = 'below' | 'above' | 'left' | 'right';
+const overlap = (a: Rect, b: Rect) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+/** The label box (w x h) on one side of the stair drawing `art`: below is the resting place (6 px under it), the rest 2 px off. */
+export function stairLabelBox(art: Rect, w: number, h: number, side: LabelSide): Rect {
+  const cx = art.x + art.w / 2, my = art.y + (art.h - h) / 2;
+  return side === 'below' ? { x: cx - w / 2, y: art.y + art.h + 6, w, h } : side === 'above' ? { x: cx - w / 2, y: art.y - 2 - h, w, h }
+    : side === 'left' ? { x: art.x - 2 - w, y: my, w, h } : { x: art.x + art.w + 2, y: my, w, h };
+}
+/**
+ * Where a stair label goes, always next to its own stairs: the first side in `order` whose box covers nothing; failing
+ * that, the side covering least, where any covered `hard` area (the player, the faced door's cue) outweighs all `soft`
+ * area (door marks, the prompt, other stairs and labels). Ties keep the earlier side.
+ */
+export function stairLabelPlace(art: Rect, w: number, h: number, order: readonly LabelSide[], hard: readonly Rect[], soft: readonly Rect[]): Rect {
+  let best: { box: Rect; hard: number; soft: number } | null = null;
+  for (const side of order) {
+    const box = stairLabelBox(art, w, h, side), c = { box, hard: hard.reduce((s, r) => s + overlap(box, r), 0), soft: soft.reduce((s, r) => s + overlap(box, r), 0) };
+    if (!best || c.hard < best.hard || c.hard === best.hard && c.soft < best.soft) best = c;
+    if (!c.hard && !c.soft) break;
+  }
+  return best!.box;
+}

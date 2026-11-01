@@ -906,9 +906,10 @@ export class CoastSampleHost {
     const list = this.q('[data-quest-list]'); if (list.innerHTML !== html) list.innerHTML = html;
   }
   /**
-   * Stair destinations as HUD text in the pixel face, at the place the view keeps for them (below the stair marker, moved
-   * clear of the player). A destination briefly hides while its actual HUD box covers a drawn enemy body; the next frame
-   * measures it afresh so it returns as soon as the body leaves. On mall floors the interaction prompt names the current stair.
+   * Stair destinations as HUD text in the pixel face, at the place the view keeps for them beside the stair marker (clear
+   * of the player, the faced door's cue and, from the size measured here, this text's own box). A destination briefly
+   * hides while its actual HUD box covers a drawn enemy body; the next frame measures it afresh so it returns as soon as
+   * the body leaves. On mall floors the interaction prompt names the current stair.
    */
   private stairEls = new Map<string, HTMLElement>();
   private stairNames(f: PublishedView['frame']) {
@@ -924,12 +925,18 @@ export class CoastSampleHost {
       el.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translateX(-50%)`; el.hidden = false;
       const r = el.getBoundingClientRect();
       el.hidden = bodies.some(b => r.left < b.x + b.w && r.right > b.x && r.top < b.y + b.h && r.bottom > b.y);
+      this.view.hudLabelSizes.set(l.id, this.worldBox(r));
     }
     for (const [id, el] of this.stairEls) if (!seen.has(id)) el.hidden = true;
   }
+  /** A client rectangle as a world box (where the view places stair labels). */
+  private worldBox(r: DOMRect) {
+    const a = this.view.clientToWorld(r.left, r.top), b = this.view.clientToWorld(r.right, r.bottom);
+    return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
+  }
   private prompt(t: Interaction | null, py: number) {
     const el = this.q('[data-prompt]'), list = this.q('[data-choices]'), act = this.q('[data-act]');
-    if (!t) { el.hidden = true; list.hidden = true; this.choicesHtml = ''; act.textContent = '交互'; act.setAttribute('aria-label', '交互'); return; }
+    if (!t) { el.hidden = true; list.hidden = true; this.choicesHtml = ''; act.textContent = '交互'; act.setAttribute('aria-label', '交互'); this.view.promptBox = null; return; }
     const hold = t.hold && t.hold.progress > 0 ? `　${Math.min(t.hold.progress, t.hold.required).toFixed(1)} / ${t.hold.required.toFixed(1)} 秒` : '';
     el.innerHTML = (this.input.touch ? '' : '<kbd>E</kbd>') + esc(t.kind === 'exit' ? `${t.label} · 站稳按住 3 秒撤离` : t.label) + hold;
     el.hidden = false;
@@ -940,6 +947,7 @@ export class CoastSampleHost {
     let px = Math.min(innerWidth - half - 8, Math.max(half + 8, p.x));
     if (!above && hitsStatus(px, p.y)) px = Math.min(innerWidth - half - 8, status.right + half + 8);
     el.style.transform = `translate(${Math.round(px)}px, ${Math.round(p.y)}px) translate(-50%, ${above ? -100 : 0}%)`;
+    this.view.promptBox = this.worldBox(el.getBoundingClientRect());
     act.textContent = t.kind === 'exit' ? '按住撤离' : t.kind === 'container' ? '搜刮' : t.kind === 'ground' ? '拾取' : t.kind === 'door' || t.kind === 'entry' ? t.label.split(' · ')[0] : t.kind === 'note' ? '阅读' : t.kind === 'talk' ? '询问' : '交互';
     act.setAttribute('aria-label', t.kind === 'exit' ? `${t.label} · 按住撤离` : t.label);
     // 附近 (docs/LOOTING.md): ground items beside the container E opens, or several loose items where E takes the
