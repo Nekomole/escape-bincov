@@ -48,6 +48,12 @@ try {
       });
       const box = selector => page.locator(selector).evaluate(el => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; });
       const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      /** Text in the tab page below 12 px, or in the pixel face off its native 16 / 32 px, or in a monospace face (ui-tokens.css roles). */
+      const typeRoles = () => page.locator('#ui .panel.hideout').evaluate(el => [...el.querySelectorAll('*')]
+        .filter(n => n.getBoundingClientRect().width && [...n.childNodes].some(c => c.nodeType === 3 && c.textContent.trim()))
+        .map(n => { const cs = getComputedStyle(n); return { face: cs.fontFamily.split(',')[0].replace(/["']/g, ''), size: parseFloat(cs.fontSize), text: n.textContent.trim().slice(0, 12) }; })
+        .filter(x => x.size < 11.95 || /Consolas|mono/i.test(x.face) || (x.face === 'Bincov Text' && x.size !== 16 && x.size !== 32)));
+      const cellOf = selector => page.locator(selector).first().evaluate(el => Number(el.dataset.cell));
       await page.goto(pathToFileURL(resolve('dist/index.html')).href + '?test=1&entry=tabs');
       await action('enter').waitFor({ timeout: 60000 }); await page.waitForTimeout(200);
       await shot('menu');
@@ -64,7 +70,14 @@ try {
       assert.equal(await bandage.getAttribute('aria-pressed'), 'true');
       assert.equal(await bandage.evaluate(el => el === document.activeElement), true, 'Selection loses keyboard focus');
       await shot('item');
-      for (const tab of ['arms', 'med', 'quests', 'home']) { await action('tab', tab).click(); await shot(tab); }
+      assert.deepEqual(await typeRoles(), [], 'gear: text below 12 px, pixel face off 16/32 px or a monospace face');
+      for (const tab of ['arms', 'med', 'quests', 'home']) {
+        await action('tab', tab).click(); await shot(tab);
+        assert.deepEqual(await typeRoles(), [], `${tab}: text below 12 px, pixel face off 16/32 px or a monospace face`);
+      }
+      // The shop grids grow with the window (54 px before #163 batch 2 at every size).
+      await action('tab', 'arms').click();
+      assert.ok(await cellOf('[data-grid="merchant"]') >= (viewport.width >= 1920 ? 64 : 54), 'Shop grid does not grow with the window');
       // All hideout tabs must keep their working area above the departure controls.
       for (const tab of ['gear', 'arms', 'med', 'quests', 'home']) {
         await action('tab', tab).click();
@@ -124,6 +137,7 @@ try {
       // Tab opens the bag only while the raid runs (a stall pause resumed after the deploy would swallow it).
       await running(page);
       await page.keyboard.press('Tab'); await waitPanel(page, 'inventory'); await shot('inventory');
+      assert.equal(await cellOf('.coast-sample [data-panel] [data-grid="bag"]'), viewport.height >= 1000 ? 72 : 54, 'Raid bag cell for this window');
       // ... and above the docked bag (the host measures the panel every four frames).
       await frames(page, 6);
       const bag = await box('.coast-sample [data-panel]'), bagToast = await toastBox();

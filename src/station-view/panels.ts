@@ -164,7 +164,7 @@ export function shopHtml(c: CartView, cell: number, selected: string | null, cas
   const line = (i: D.Item, src: 'buy' | 'sell') => `<li class="${src}">${icon(i.id, 18)}<span>${esc(D.ITEMS[i.id].name)}${i.qty > 1 ? ` × ${i.qty}` : ''}</span><b>${src === 'buy' ? '-' : '+'} ${yuan(shopQuote(src, i).total ?? 0)}</b></li>`;
   const lines = [...c.buy.items.map(i => line(i, 'buy')), ...c.sell.items.map(i => line(i, 'sell'))].join('');
   const buyNote = c.merchant === 'arms' ? '按包购买 · 配件每次出击后轮换' : '按包购买';
-  return `<div class="shop" style="--cell:${cell}px">
+  return `<div class="shop" style="--cell:${cell}px;--stash-cols:${c.stash.w}">
     <section class="side theirs">${tradeTabs(c, mode, 'tradetabs')}<div class="tabpanes">
       ${pane('buy', `${browseBar(c)}${gridHtml(c.catalog, 'merchant', cell, selected, { empty: '没有符合条件的商品' })}<h3>待买 <small title="${buyNote}">${yuan(c.totals.buy)} · ${buyNote}</small></h3>${gridHtml(c.buy, 'buy', cell, selected, { empty: '把要买的拖到这里' })}`)}
       ${pane('sell', `<h3>待卖 <small>${yuan(c.totals.sell)} · 整组出售</small></h3>${gridHtml(c.sell, 'sell', cell, selected, { empty: '把要卖的拖到这里' })}<h3>本单明细</h3><ul class="lines">${lines || '<li class="none">还没有要买卖的东西</li>'}</ul>`)}

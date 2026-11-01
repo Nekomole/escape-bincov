@@ -343,7 +343,7 @@ export class StationHost {
     const state: SceneState = {
       player: { x: this.player.x, y: this.player.y, dir8: this.player.dir8, walkFrame: this.player.moving ? 1 + (Math.floor(this.player.walk) % 4) : 0 },
       actors, power: s.power, gateOpen: this.gateOpen, facilities: s.base.facilities, upgraded: s.profile.upgraded,
-      focus: this.ui.open ? panelStation?.id ?? null : this.focus?.id ?? null, peekRoom: peek, look, panelInset: this.ui.inset,
+      focus: this.ui.open ? panelStation?.id ?? null : this.focus?.id ?? null, peekRoom: peek, look,
       curtain: this.curtain, training: train ? { active: true, progress: training.capped ? 1 : Math.min(1, training.activeSeconds / 120) } : null,
       workbench: { progress: s.base.queue[0] ? 1 - s.base.queue[0].remaining / s.base.queue[0].duration : null, ready: s.base.completed.length },
       doorHint: door ? { x: door.d.x, y: door.d.y, dir: door.dir } : null,

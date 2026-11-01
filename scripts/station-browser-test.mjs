@@ -1039,7 +1039,7 @@ try {
       await open({ fixture: preset('repaired'), size });
       const quick = await page.evaluate(() => { const r = document.querySelector('#station-yard').shadowRoot.querySelector('.quick').getBoundingClientRect(); return Math.round(r.left + r.width / 2 - innerWidth / 2); });
       assert.ok(Math.abs(quick) <= 1, `${size}: 快捷栏偏离中线 ${quick}px`);
-      // 任务、设施、身体 open at the base 560 px width; 整备 is wider. A tab whose right edge passes the strip is cut.
+      // Every tab shares one frame now (H20); a tab whose right edge passes the strip is cut.
       const tabs = {};
       for (const [key, kind] of [['4', 'radio'], ['5', 'facility'], ['6', 'body'], ['1', 'gear']]) {
         await page.keyboard.press(key); await until(k => window.__station.host.ui.kind === k, 3000, kind, kind); await page.waitForTimeout(150);
@@ -1054,6 +1054,34 @@ try {
       assert.deepEqual([gear.broken, gear.numbers], [[], ['01', '02', '03', '04']], `${size}: 武器行或小节编号`);
       await shot(`H19-gear-${size.join('x')}`);
       rows.push({ size, quickOffset: quick, tabs, gear });
+    }
+    return rows;
+  });
+  await step('H20 两档桌面：七个页签同一个框，格子随屏幕放大，面板文字不小于 12px、像素字只用 16/32px', async () => {
+    const rows = [];
+    for (const size of [[1280, 720], [1920, 1080]]) {
+      await open({ fixture: preset('repaired'), size });
+      const frames = {}, cells = {};
+      for (const [key, kind] of [['1', 'gear'], ['2', 'arms'], ['3', 'med'], ['4', 'radio'], ['5', 'facility'], ['6', 'body'], ['7', 'deploy']]) {
+        await page.keyboard.press(key); await until(k => window.__station.host.ui.kind === k, 3000, kind, kind); await page.waitForTimeout(250);
+        const r = await page.evaluate(() => {
+          const root = document.querySelector('#station-yard').shadowRoot, p = root.querySelector('.panel'), b = p.getBoundingClientRect(), t = p.querySelector('.ptabs').getBoundingClientRect();
+          // Item names and counts inside grid cells scale with the cell (station.css .item .lbl) and are left out here.
+          const text = [...p.querySelectorAll('*')].filter(n => !n.closest('.item') && n.getBoundingClientRect().width && [...n.childNodes].some(c => c.nodeType === 3 && c.textContent.trim()));
+          const off = text.map(n => { const cs = getComputedStyle(n); return { face: cs.fontFamily.split(',')[0].replace(/["']/g, ''), size: parseFloat(cs.fontSize), text: n.textContent.trim().slice(0, 12) }; })
+            .filter(x => x.size < 11.95 || (x.face === 'Bincov Text' && x.size !== 16 && x.size !== 32));
+          return { frame: [b.left, b.top, b.width, b.height, t.top].map(Math.round).join(','), cell: Number(p.querySelector('[data-grid]')?.dataset.cell ?? 0), off };
+        });
+        frames[kind] = r.frame; cells[kind] = r.cell;
+        assert.deepEqual(r.off, [], `${size} ${kind}: 文字小于 12px，或像素字不在 16/32px`);
+      }
+      assert.equal(new Set(Object.values(frames)).size, 1, `${size}: 框或页签栏随页签变化 ${JSON.stringify(frames)}`);
+      // 1280×720 keeps main's cells (36 px: height-bound, and a shop with its keeper's line shrinks one step, as on main);
+      // 1080p grows them past the old 56 px cap.
+      for (const k of ['gear', 'arms', 'med']) assert.ok(cells[k] >= (size[0] === 1920 ? 64 : 36), `${size} ${k}: 格子 ${cells[k]}px`);
+      await page.keyboard.press('3'); await until(() => window.__station.host.ui.kind === 'med', 3000, 'med'); await page.waitForTimeout(200);
+      await shot(`H20-med-${size.join('x')}`);
+      rows.push({ size, frame: frames.gear, cells });
     }
     return rows;
   });

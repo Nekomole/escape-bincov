@@ -1,3 +1,12 @@
+## 2026-11-01 · 前端精致度第二批：共用变量、固定面板框、格子随屏幕放大（#163）
+
+分支 `fix/ui-polish-batch2`，基线 main `ca59605e`，叠在第一批 #165 的 head `43c2ee3b` 上（先合 #165）。维护者从三套原型（A 院子琥珀 / B 标题黄铜 / C 行动卡其；右侧固定宽 / 居中统一大框）里选了配色 A 和居中统一大框。
+
+- 实现：新增 `src/ui-tokens.css`（16 阶中性色、一种强调色、状态色、字体角色、12px 起的字号、间距），七个样式表的写死颜色按原色系归到这些变量，只留纯黑白和行动战斗特效的具名变量；桌面小于 12px 的字提到 12px，像素字只用 16/32px，旧页签去掉 Consolas。院子所有页签（含出击）共用一个居中框（距窗口 12px，大窗口 5vh 5vw），删掉相机为停靠面板让位的 `panelInset`；格子按框算、上限 88px，商店右栏按格子定宽；旧页签商店 `shopCell` 54–80px；行动背包 1600×1000 以上 72px，面板同时加宽到 1480px。出击页换成统一标题栏后，简报栏吸收多出的宽度，地图区不宽于 3:2。
+- 检查：新增单测 `ui-tokens.test.ts`（写死颜色、未定义变量、加载顺序；main 的 range.css 作反例报 21 处）、station H20（七个页签框一致、字号与像素字、1920 格子 ≥64px；main 构建失败）、ui-review 的旧页签字体角色和两处格子尺寸。
+- 验证：main `ca59605e` + #165 + 本批构建 `5c0bd5a3…`：1115 单测、package、check:ci 139、station 86/86、ui、shop-feedback 28、browser、gunsmith-bench 20、shop-drag 21、hideout 8、issue26-station 18、issue26-inventory 18、loot 48、raid-default 11、save-browser 17、tactical 8、art、title 27、desktop-input 12、mobile 11、mobile-ux 13。四个尺寸前后对比图见[任务记录](docs/tasks/ui-polish-batch2.md)。
+- 遗留：1280×720 下格子里的物品名和数量约 10px（格子 <44px，要改整备或商店布局才能到 12px，待维护者定）；行动面板布局归第三批；真人/真机未验。
+
 ## 2026-10-31 · 两份行动报告合一（#163 待定项）
 
 [PR #166](https://github.com/xuys2025/escape-bincov/pull/166)，分支 `fix/one-raid-report`，基线 main `278b7e24`。核对发现结算写入、写入失败重试、备份导出和撤离/死亡音效都在局内「正在保存结算」面板，两份报告只负责显示（#163 原写“结算页负责音效与重试落点”不准确）。做了对照表（A 保留旧结算页 / B 保留院子报告 / C 合并原型，三尺寸真实截图），维护者选 B，并同意不等 #165 先做。
