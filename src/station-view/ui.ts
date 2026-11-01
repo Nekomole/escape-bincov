@@ -48,6 +48,16 @@ const CENTER: PanelKind[] = ['report', 'menu', 'help', 'gunsmith'];
  * SHOP_SIDE_MIN px (its tabs and catalog filter).
  */
 const GEAR_COLS = 6 + D.STASH_W, SHOP_COLS = CATALOG_W + D.STASH_W, SHOP_PAD = 110, SHOP_SIDE_MIN = 252;
+/**
+ * The desktop frame every panel shares (#163 batch 2, maintainer's pick: one centred box, the departure terminal's): the
+ * same size and place on every tab, so switching tabs never moves it. Matches .panel in station.css (inset 12px, 5vh 5vw
+ * on large windows); the grids are sized to it. Cells grow with the screen up to CELL_MAX.
+ */
+function frameBox(): { w: number; h: number } {
+  const big = innerWidth >= 1500 && innerHeight >= 850;
+  return { w: big ? innerWidth * .9 : innerWidth - 24, h: big ? innerHeight * .9 : innerHeight - 24 };
+}
+const CELL_MAX = 88;
 const shopWidth = (cell: number) => Math.max(CATALOG_W * cell + 2, SHOP_SIDE_MIN) + D.STASH_W * cell + SHOP_PAD;
 /**
  * The old hideout tabs kept as shortcuts (decision 06-2): open any of them from anywhere with the same session the
@@ -198,14 +208,13 @@ export class UI {
   }
   /** Leave with a dirty cart allowed (the cart is only a list; nothing was paid). */
   discard() { this.shop?.reset(); this.dialog = null; this.dialogEl.hidden = true; this.close(); }
-  /** CSS px of the right side covered by the docked panel (the camera keeps the station in view). */
-  get inset() { return this.kind && !CENTER.includes(this.kind) && !this.panel.hidden && !this.compact ? this.panel.getBoundingClientRect().width + 24 : 0; }
 
   /** Phones and short windows get the paired-container layout. */
   get compact() { return innerWidth < 900 || innerHeight < 560; }
-  /** Grid cell (CSS px) that fits the panel's tallest column and a width that leaves the station in view. */
+  /** Grid cell (CSS px) that fits the panel's tallest column and the frame's width. */
   private cellFor(kind: PanelKind): number {
-    const s = this.rt.snapshot(), rows = D.stashShownRows(s.profile.stash), H = innerHeight, Wd = innerWidth;
+    // H: the frame's height plus the 24 px the old docked panel's formulas below leave for its margins.
+    const s = this.rt.snapshot(), rows = D.stashShownRows(s.profile.stash), box = frameBox(), H = box.h + 24, Wd = innerWidth;
     if (this.compact) {
       // Landscape: two containers side by side (16 columns for gear, 14 for shops); portrait: stacked, 10 columns wide.
       // Height fits the first container (5 rows); the second one scrolls when it is taller.
@@ -215,15 +224,18 @@ export class UI {
     }
     if (kind === 'gear') {
       // Left: slot, three headings and the weight meter (~224 px) around bag (5 rows) and safe (2 rows); right: stash, upgrade and details (~180 px).
-      const byH = Math.min((H - 164 - 326) / 7, (H - 164 - 254) / rows), byW = (Math.min(Wd - 24, Wd * .74) - 70) / GEAR_COLS;
+      const byH = Math.min((H - 164 - 326) / 7, (H - 164 - 254) / rows), byW = (box.w - 70) / GEAR_COLS;
       // Below 36 px, three-character labels such as 保险管 no longer fit after the new gear actions.
       // Keep labels readable and allow the existing vertical scroll on exceptionally short desktop panels.
-      return Math.max(36, Math.min(56, Math.floor(Math.min(byH, byW))));
+      return Math.max(36, Math.min(CELL_MAX, Math.floor(Math.min(byH, byW))));
     }
     // The merchant side is 8 rows (goods 5, buy list 3) under the tabs and the filter; the stash and the money beside it.
-    const byH = Math.min((H - 416) / 8, (H - 380) / rows), byW = (Math.min(Wd - 24, Wd * .76) - SHOP_PAD) / SHOP_COLS;
+    const byH = Math.min((H - 416) / 8, (H - 380) / rows), byW = (box.w - SHOP_PAD) / SHOP_COLS;
     // Not below 36 px either (three-character labels); a stash taller than that leaves scrolls in its box (fitStash).
-    return Math.max(36, Math.min(56, Math.floor(Math.min(byH, byW))));
+    // The merchant side's minimum width (its tabs) can still decide at small cells.
+    let c = Math.max(36, Math.min(CELL_MAX, Math.floor(Math.min(byH, byW))));
+    while (c > 36 && shopWidth(c) > box.w) c--;
+    return c;
   }
 
   render() {
@@ -294,7 +306,6 @@ export class UI {
     }
     const scroll = el.querySelector('.pbody')?.scrollTop ?? 0;
     el.className = `${center ? 'modal' : 'panel'} k-${kind}${WIDE.includes(kind) ? ' wide' : ''}${this.compact ? ' compact' : ''}${innerHeight > innerWidth ? ' portrait' : ''}`;
-    el.style.width = WIDE.includes(kind) && !this.compact ? `${Math.min(innerWidth - 24, (kind === 'gear' ? GEAR_COLS * cell + 70 : shopWidth(cell)))}px` : '';
     const cash = ['gear', 'arms', 'med', 'facility', 'deploy', 'radio', 'generator', 'gunsmith'].includes(kind) ? `<span class="pcash">现金 <b>¥ ${s.profile.cash.toLocaleString()}</b></span>` : '';
     const tabbed = SHORTCUTS.some(q => q.kind === kind) || kind === 'generator';
     const tabs = tabbed ? `<nav class="ptabs" aria-label="水产站功能">${SHORTCUTS.map(q => `<button data-tab="${q.kind}" class="${q.kind === kind ? 'on' : ''}" ${q.kind === kind ? 'aria-current="page"' : ''}>${q.label}<kbd>${q.key}</kbd></button>`).join('')}</nav>` : '';
