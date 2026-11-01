@@ -30,11 +30,16 @@ function segmentDistance(ax: number, ay: number, bx: number, by: number, px: num
 
 /** Hit confirmation (#75): the player's own pain, a confirmed critical and a confirmed kill. */
 export type HitCueOut = Pick<SynthAudio, 'pain' | 'crit' | 'kill'>;
+/** The special rounds' cues (special-rounds.ts); optional, so an output without them simply stays quiet for them. */
+export type FireOut = Partial<Pick<SynthAudio, 'blast' | 'flame' | 'crackle'>>;
 type HeardHits = { hit: Set<string>; crit: Set<string> };
 
 export class SampleSound {
   private live: boolean | null = null;
   private stepLeft = 0;
+  /** Seconds to the next ground-fire crackle, and the last burst heard (special rounds). */
+  private crackleLeft = 0;
+  private boom: { t: number; x: number; y: number } | null = null;
   private reloading = false;
   private heals: number | null = null;
   private beatLeft = 0;
@@ -54,7 +59,7 @@ export class SampleSound {
   private switches = '';
 
   /** `feel` is read at every shot: the range's A/B switch (ViewOptions.feel). */
-  constructor(private readonly out: SoundOut & HitCueOut, private readonly feel: () => 'enhanced' | 'classic' = () => 'enhanced') {}
+  constructor(private readonly out: SoundOut & HitCueOut & FireOut, private readonly feel: () => 'enhanced' | 'classic' = () => 'enhanced') {}
 
   /** Stereo position and level of a sound at world (x, y) for the player standing at the listener. */
   spot(x: number, y: number): Spot {
@@ -134,6 +139,16 @@ export class SampleSound {
     // A heal (Q) spends a supply: the original plays the pickup cue for any used supply.
     if (this.heals !== null && f.hud.heals < this.heals) this.out.pickup();
     this.heals = f.hud.heals;
+    // Ground fires crackle now and then, the nearest one heard where it burns.
+    const fires = f.fires ?? [];
+    if (fires.length) {
+      this.crackleLeft -= dt;
+      if (this.crackleLeft <= 0) {
+        const near = fires.reduce((a, c) => Math.hypot(c.x - p.x, c.y - p.y) < Math.hypot(a.x - p.x, a.y - p.y) ? c : a);
+        this.crackleLeft = .07 + Math.random() * .16;
+        if (Math.hypot(near.x - p.x, near.y - p.y) < 520) this.out.crackle?.(this.spot(near.x, near.y));
+      }
+    } else this.crackleLeft = 0;
     // Near misses: an enemy round whose path this frame passes within 30 px of the player.
     const seen = new Set<string>();
     for (const bl of f.bullets ?? []) {
@@ -170,6 +185,7 @@ export class SampleSound {
         if (e.shooter === 'player') {
           const kind = timbre ?? (e.weapon === 'shotgun' ? 'shotgun' : 'pistol');
           if (e.suppressed) this.out.shot(kind, undefined, 1, true); else this.out.shot(kind);
+          if (e.round === 'dragon') this.out.flame?.();
           break;
         }
         const s = at(e.shooter) ?? (e.pellets[0] ? this.spot(e.pellets[0].origin.x, e.pellets[0].origin.y) : undefined);
@@ -195,6 +211,14 @@ export class SampleSound {
           const s = this.spot(e.lastFree.x, e.lastFree.y); if (s.gain > .3) this.out.impact(s, this.feel() === 'classic' ? undefined : e.surface);
         }
         break;
+      case 'blast': {
+        // The pellets of one shot burst together: one boom for them (within 0.08 s and 48 px of the last).
+        const t = e.stamp.simulationTime, last = this.boom;
+        if (!shown(e.at) || last && t - last.t < .08 && t >= last.t && Math.hypot(last.x - e.at.x, last.y - e.at.y) < 48) break;
+        this.boom = { t, x: e.at.x, y: e.at.y };
+        this.out.blast?.(this.spot(e.at.x, e.at.y));
+        break;
+      }
       case 'looted': this.out.stow(); break;
       case 'door': { const s = e.by === 'player' ? undefined : at(e.by); if (s) this.out.click(s); else this.out.click(); break; }
       default: break;

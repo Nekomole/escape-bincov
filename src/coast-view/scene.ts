@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, RenderTexture, Sprite, Texture } from 'pixi.js';
-import { worldKeyString, type ActorKind, type ActorView, type MapDef, type Point, type PublishedView, type Rect, type StampedEvent, type ViewFrame } from '../raid-runtime/contract';
+import { worldKeyString, type ActorKind, type ActorView, type MapDef, type Point, type PublishedView, type Rect, type RoundKind, type StampedEvent, type TracerColor, type ViewFrame } from '../raid-runtime/contract';
 import { hasRoof, isRuined, materials, regionLamps, storeys, type GroundMaterial } from './appearance';
 import { SAMPLE_AREA } from '../sample-area';
 import { paintGround, puddles, type GroundBake } from './art/ground';
@@ -9,6 +9,7 @@ import { LOOT_FOOT, LOOT_H } from './art/props';
 import { solWall, type SolArt } from './art/sol';
 import { LOW_H, ROOF_MARGIN, STOREY_H, WALL_H, paintCanopy, paintCeiling, paintDoorGuide, paintDownpipe, paintDoorFoot, paintLintel, paintLow, paintOpeningGuide, paintPassageGuide, paintRoof, paintStairLabel, paintStairs, paintWall, paintWallAC, wallKey, type WallSpec } from './art/structures';
 import { Fx } from './fx';
+import { FireFx, tracerPalette } from './fire-fx';
 import { gait, walkFrame } from '../gait';
 import { Lighting, MOODS, lamp, type Light } from './lighting';
 import { Textures } from './textures';
@@ -159,6 +160,10 @@ export class CoastView {
   private upHolder = new Container(); private upSprite = new Sprite();
   readonly screen = new Sprite();
   private fx: Fx;
+  /** Bursts, ground fires, burning bodies and tracer stars of the special rounds (special-rounds.ts). */
+  private fireFx: FireFx;
+  /** Special rounds by bullet uid, from their shot events: an impact may come before the bullet is ever in a frame. */
+  private specials = new Map<string, { round: RoundKind; color?: TracerColor }>();
   readonly weather: Weather;
   readonly tide: Tide;
 
@@ -201,6 +206,8 @@ export class CoastView {
   private rngState = 7;
   private time = 0;
   private destroyed = false;
+  /** What the special rounds' effects draw now (fire-fx.ts counts), for checks. */
+  get fireStats() { return this.fireFx.counts; }
 
   cam = { x: 0, y: 0 };
   /** Smoothed follow camera (without look-ahead); hx/hy are what snapAxis carries per axis and `lead` the look-ahead (both
@@ -244,6 +251,7 @@ export class CoastView {
       this.lightHolder.addChild(this.lightOverlay);
       this.upHolder.addChild(this.upSprite);
       this.fx = new Fx(this.tex, this.sorted, this.flat, (x, y) => this.regionsAt({ x, y }));
+      this.fireFx = new FireFx(this.tex, this.sorted, this.flat, this.fx, this.light, () => this.rnd(), () => this.opts.reducedMotion);
       this.tex.warm(['player', 'scav', 'salt', 'creature', 'elite']);
       this.resize();
       CoastView.live.add(this);
@@ -333,6 +341,9 @@ export class CoastView {
       if (!current(e)) { this.stats.droppedEvents++; continue; }
       this.onEvent(e, f, blown);
     }
+    // A special round's record ends once its bullet is gone and its events have been shown.
+    if (this.specials.size) { const flying = new Set(f.bullets.map(b => b.uid)); for (const uid of this.specials.keys()) if (!flying.has(uid)) this.specials.delete(uid); }
+    this.fireFx.sync(f.fires, [f.player, ...f.actors], p => shownAt(this.map!, f.revealed, p), p => regionAtClosed(this.map!, f.revealed, p));
     // A scope (#28 M3-11): with the right button held, a flick across the screen drops the whole look-ahead in one frame,
     // so the camera can move further than the 96 px margin the culling below keeps around the last camera (walls at the
     // screen edge went undrawn for a frame from x1.5 up, M0-07). With a scope the camera is placed first and the baking
@@ -343,6 +354,8 @@ export class CoastView {
     this.bakeAhead(dt);
     this.fx.update(dt);
     this.fx.reveal(f.revealed);
+    this.fireFx.update(dt);
+    this.fireFx.reveal(p => shownAt(this.map!, f.revealed, p));
     // A flash or swing made by this batch's events is drawn once before it ages: below about 14 frames a second it used to
     // age past its life in the frame that made it and was never seen (PR #39, on CI's software renderer every time).
     for (let i = this.muzzles.length - 1; i >= 0; i--) {
@@ -389,7 +402,7 @@ export class CoastView {
 
   private clearScene() {
     for (const layer of [this.groundLayer, this.flat, this.shadows, this.sorted, this.xray, this.overhead]) for (const c of layer.removeChildren()) c.destroy();
-    this.fx?.clear(); this.shots.clear(); this.blowGroups.clear();
+    this.fx?.clear(); this.fireFx?.clear(); this.specials.clear(); this.shots.clear(); this.blowGroups.clear();
     for (const o of [...this.indoor, ...this.rising]) this.dropCrops(o.wall!);
     this.occluders = []; this.indoor = []; this.rising = []; this.indoorOf = undefined; this.openingGuides = []; this.pendingChunks = []; this.doors.clear(); this.doorGuides.clear(); this.facedDoor = null; this.stairLabels.clear(); this.promptBox = null; this.actors.clear(); this.bullets.clear(); this.crates.clear(); this.loot.clear(); this.muzzles = []; this.swings = [];
     this.debugG.clear();
@@ -698,6 +711,7 @@ export class CoastView {
     const shown = (p: Point) => shownAt(this.map!, f.revealed, p);
     switch (e.type) {
       case 'shot': {
+        if (e.round) for (const p of e.pellets) this.specials.set(p.bullet, { round: e.round, ...(e.color ? { color: e.color } : {}) });
         const a = actor(e.shooter); if (!a) break;
         const tip = this.muzzleOf(a);
         // The tracers of this shot leave the drawn muzzle; a shooter in view also shows them from there on.
@@ -721,10 +735,11 @@ export class CoastView {
         if (e.weapon === 'shotgun') sp.scale.set(1.4);
         this.sorted.addChild(sp); this.muzzles.push({ s: sp, t: null, shooter: a.uid, weapon: a.weapon });
         this.light.lights.push({ x: a.x + c * 20, y: a.y + s * 20, r: e.weapon === 'shotgun' ? 100 : 80, color: 0xe0b878, k: .9, ttl: .07, region: a.regionId });
+        if (e.round === 'dragon') this.fireFx.muzzle(tip?.at ?? { x: a.x + c * reach, y: a.y - AIM_H + s * reach }, a.y, angle, a.regionId);
         if (e.weapon !== 'shotgun') this.fx.casing(a.x + c * 4, a.y + s * 4, AIM_H - 2, angle, this.rnd);
         this.fx.smoke(a.x + c * (reach + 2), a.y + s * (reach + 2) * .6, AIM_H, this.rnd, e.weapon === 'shotgun' ? 5 : 3);
         if (a.kind === 'player' && !this.opts.reducedMotion) {
-          this.shake = Math.min(2, this.shake + (e.weapon === 'shotgun' ? 1.5 : .6));
+          this.shake = Math.min(e.round === 'dragon' ? 3 : 2, this.shake + (e.round === 'dragon' ? 2.4 : e.weapon === 'shotgun' ? 1.5 : .6));
           const k = e.weapon === 'shotgun' ? 4 : e.weapon === 'carbine' ? 2.5 : 2;
           this.recoil.x -= c * k; this.recoil.y -= s * k;
         }
@@ -740,6 +755,14 @@ export class CoastView {
       }
       case 'impact': {
         if (!shown(e.lastFree)) break;
+        const special = this.specials.get(e.bullet);
+        // A dragon's breath pellet shows its burst (the blast event), not sparks.
+        if (special?.round === 'dragon') break;
+        if (special?.round === 'tracer' && e.reason !== 'range') {
+          const b = this.bullets.get(e.bullet), v = b ? Math.hypot(b.vx, b.vy) || 1 : 1;
+          const n = e.normal ?? (b ? { x: -b.vx / v, y: -b.vy / v } : { x: 0, y: 1 }), p = e.reason === 'hit-actor' ? e.contact ?? e.lastFree : e.lastFree;
+          this.fireFx.star(p.x, p.y + .5, AIM_H, n, regionAt(p), tracerPalette(special.color ?? 'red', this.hue(e.bullet)));
+        }
         if (e.owner && actor(e.owner)?.tactics?.archetype === 'sac-spitter') {
           this.fx.acid(e.lastFree.x, e.lastFree.y, 0, this.rnd, true); break;
         }
@@ -764,6 +787,17 @@ export class CoastView {
         const a = actor(e.uid), drops = !group ? 6 : group.bled ? 0 : bloodDrops(group.pellets, group.again);
         if (group) group.bled = true;
         if (a && shown(a) && drops) this.fx.blood(a.x, a.y + .5, AIM_H, e.angle ?? 0, this.rnd, drops);
+        break;
+      }
+      case 'blast': {
+        if (!shown(e.at)) break;
+        const fresh = this.fireFx.blast(e.at.x, e.at.y, e.radius, regionAt(e.at), e.seq);
+        // The blast rocks the camera, more the closer it is (never with reduced motion).
+        if (fresh && !this.opts.reducedMotion) {
+          const near = Math.max(0, 1 - Math.hypot(e.at.x - f.player.x, e.at.y - f.player.y) / 420);
+          this.shake = Math.max(this.shake, 2.5 + 5 * near);
+          this.recoil = pushCamera(this.recoil, Math.atan2(f.player.y - e.at.y, f.player.x - e.at.x) + Math.PI, 2.5 * near);
+        }
         break;
       }
       case 'door': { const d = this.map!.doors.find(x => x.id === e.id); if (d) this.fx.dust(d.x * 32 + 16, d.y * 32 + 30, this.rnd, 4); break; }
@@ -990,16 +1024,71 @@ export class CoastView {
       const start = e.from ?? { x: e.born.x, y: e.born.y - height };
       const out = (headX - start.x) * ux + (headY - start.y) * uy - (e.from ? 0 : 3);
       const back = e.seen ? (headX - e.seen.x) * ux + (headY - e.seen.y) * uy : 0;
-      const len = Math.min(b.enemy ? 8 : 14, out, back);
+      const special = b.round ? { round: b.round, color: b.color } : this.specials.get(b.uid), round = special?.round;
       e.g.clear();
-      if (len > 0) e.g.moveTo(hx - ux * len, hy - uy * len).lineTo(hx, hy).stroke({ width: acid ? 2 : 1, color: acid ? 0x9da758 : b.enemy ? 0xe48c64 : 0xffe6a8, alpha: .55 });
-      if (out > 0) {
-        if (acid) e.g.circle(hx, hy, 2).fill(0xb6c16e);
-        else e.g.rect(hx, hy, 1, 1).fill(b.enemy ? 0xffc29a : 0xfff6d8);
+      // Special rounds glow: their trail adds light to what is under it.
+      e.g.blendMode = round ? 'add' : 'normal';
+      if (special && round) this.drawSpecial(e.g, round, special.color ?? 'red', hx, hy, ux, uy, Math.min(round === 'dragon' ? 28 : 44, out, back), out > 0, show, b);
+      else {
+        const len = Math.min(b.enemy ? 8 : 14, out, back);
+        if (len > 0) e.g.moveTo(hx - ux * len, hy - uy * len).lineTo(hx, hy).stroke({ width: acid ? 2 : 1, color: acid ? 0x9da758 : b.enemy ? 0xe48c64 : 0xffe6a8, alpha: .55 });
+        if (out > 0) {
+          if (acid) e.g.circle(hx, hy, 2).fill(0xb6c16e);
+          else e.g.rect(hx, hy, 1, 1).fill(b.enemy ? 0xffc29a : 0xfff6d8);
+        }
       }
       e.g.zIndex = b.y + .1; e.g.visible = show;
     }
     for (const [uid, e] of this.bullets) if (!seen.has(uid)) { e.g.visible = false; queueMicrotask(() => { if (this.bullets.get(uid) === e) { e.g.destroy(); this.bullets.delete(uid); } }); }
+  }
+
+  /**
+   * A special round's trail (special-rounds.ts), its head at (hx, hy) flying along (ux, uy), `len` px of it out of the
+   * barrel. A tracer burns in its colour, three times as long and bright as an ordinary trail, over a faint glow; a
+   * rainbow tracer's trail is bands of hue that sweep along it as it flies. A dragon's breath pellet is a small fireball
+   * dragging a tail of flame and dropping embers. Both light the ground under them.
+   */
+  private drawSpecial(g: Graphics, round: RoundKind, color: TracerColor, hx: number, hy: number, ux: number, uy: number, len: number, out: boolean, show: boolean,
+    b: { uid: string; x: number; y: number }) {
+    if (round === 'tracer') {
+      const hue = this.hue(b.uid), head = tracerPalette(color, hue);
+      if (len > 0 && color === 'rainbow') {
+        // Bands from the tail to the head, each a step further round the wheel.
+        const bands = 7;
+        for (let i = 0; i < bands; i++) {
+          const from = len * (1 - i / bands), to = len * (1 - (i + 1) / bands), p = tracerPalette(color, hue - (bands - 1 - i) * .09);
+          g.moveTo(hx - ux * from, hy - uy * from).lineTo(hx - ux * to, hy - uy * to).stroke({ width: 5, color: p.glow, alpha: .3 });
+          g.moveTo(hx - ux * from, hy - uy * from).lineTo(hx - ux * to, hy - uy * to).stroke({ width: 2, color: p.mid, alpha: .95 });
+        }
+        g.moveTo(hx - ux * len * .3, hy - uy * len * .3).lineTo(hx, hy).stroke({ width: 1, color: head.core, alpha: 1 });
+      } else if (len > 0) {
+        g.moveTo(hx - ux * len, hy - uy * len).lineTo(hx, hy).stroke({ width: 5, color: head.glow, alpha: .28 });
+        g.moveTo(hx - ux * len, hy - uy * len).lineTo(hx, hy).stroke({ width: 2, color: head.mid, alpha: .95 });
+        g.moveTo(hx - ux * len * .5, hy - uy * len * .5).lineTo(hx, hy).stroke({ width: 1, color: head.core, alpha: 1 });
+      }
+      if (out) { g.circle(hx, hy, 2.5).fill({ color: head.mid, alpha: .5 }); g.rect(hx - 1, hy - 1, 2, 2).fill(head.core); }
+      if (out && show) this.light.lights.push({ x: b.x, y: b.y, r: 34, color: head.light, k: .5, ttl: .05 });
+      return;
+    }
+    if (len > 0) {
+      const tail = [[1, 3, 0xb0301c, .35], [.7, 3, 0xff6a24, .6], [.4, 2, 0xffb347, .85]] as const;
+      for (const [k, w, c, a] of tail) g.moveTo(hx - ux * len * k, hy - uy * len * k).lineTo(hx, hy).stroke({ width: w, color: c, alpha: a });
+    }
+    if (!out) return;
+    g.circle(hx, hy, 3.5).fill({ color: 0xff7a2a, alpha: .55 });
+    g.circle(hx, hy, 2.2).fill(0xffc24a);
+    g.rect(hx - 1, hy - 1, 2, 2).fill(0xfffbe0);
+    if (!show) return;
+    this.light.lights.push({ x: b.x, y: b.y, r: 46, color: 0xff8a3c, k: .55, ttl: .05 });
+    if (this.rnd() < .6) this.fx.spawn({ x: b.x - ux * 4, y: b.y - uy * 4, h: AIM_H, vx: (this.rnd() - .5) * 30, vy: (this.rnd() - .5) * 14, vh: 10 + this.rnd() * 30,
+      ttl: .25 + this.rnd() * .3, color: this.rnd() < .5 ? 0xffb347 : 0xff6a24, g: 120, add: true, decor: true });
+  }
+
+  /** A rainbow tracer's hue now: it turns about one and a half times a second, each round from its own start. */
+  private hue(uid: string) {
+    let h = 0;
+    for (let i = 0; i < uid.length; i++) h = (h * 31 + uid.charCodeAt(i)) >>> 0;
+    return (h % 1000) / 1000 + this.time * 1.5;
   }
 
   private updateExit(f: ViewFrame) {

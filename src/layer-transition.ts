@@ -96,16 +96,20 @@ export function aimTarget(raid: LayeredRaid, world: WorldDefinition, reach: numb
     return enemiesOnRay(raid, mapId, ray, dx, dy, stop)[0]?.enemy.uid ?? null;
 }
 
-/** Actual damage and corpse ownership shared by ordinary and departing shots. */
+/**
+ * Actual damage and corpse ownership shared by ordinary and departing shots. `source.through`: the damage ignores
+ * armour (burning, special-rounds.ts).
+ */
 export function damageLayerEnemy(state: ExpansionState, mapId: string, enemy: EnemyState, amount: number, gun = true,
-    source: { owner: string; at: Point; incomingAngle?: number } = { owner: 'player', at: state.raid!.player }): void {
+    source: { owner: string; at: Point; incomingAngle?: number; through?: boolean } = { owner: 'player', at: state.raid!.player }): void {
     if (enemy.hp <= 0 || amount <= 0) return;
     if (source.owner !== 'player') {
         const attacker = [...state.raid!.maps[mapId].enemies, ...state.raid!.pursuits.filter(p => p.sourceMap === mapId).map(p => p.enemy)]
             .find(e => e.uid === source.owner);
         if (!enemyRules(state.raid) || !attacker || !canDamageEnemy(attacker, enemy)) return;
     }
-    const raid = state.raid!, layer = raid.maps[mapId], actual = Math.min(enemy.hp, enemyDamageAfterArmor(enemy, source.at, amount, source.incomingAngle));
+    const raid = state.raid!, layer = raid.maps[mapId];
+    const actual = Math.min(enemy.hp, source.through ? amount : enemyDamageAfterArmor(enemy, source.at, amount, source.incomingAngle));
     enemy.hp -= actual;
     if (mapId === raid.currentMap) {
         const at = enemy.tactics ? source.at : raid.player;
