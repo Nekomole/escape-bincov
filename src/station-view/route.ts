@@ -9,7 +9,7 @@
 import { app, audio, hideoutRuntime } from '../app';
 import { navigation } from '../navigation';
 import { gpuTextures, managedSlots, parkApp, takeApp } from '../pixi-app';
-import { raidWorlds, sampleMallLayout, sampleMode, villageSeed } from '../raid-areas';
+import { marketStory, raidWorlds, sampleMallLayout, sampleMode, villageSeed } from '../raid-areas';
 import { toast } from '../toast';
 import { lifecycle } from '../view-lifecycle/scope';
 import type { HideoutSnapshot, RunWorld } from '../hideout-runtime/contract';
@@ -75,6 +75,7 @@ async function openStation(arrival: Arrival): Promise<boolean> {
         departed: runId => { closeStation(); void navigation().startPreparedHideoutRaid(runId).then(ok => { if (!ok) { toast('行动已保存，但没能启动。请在标题页继续行动。'); navigation().changeState('menu'); } }); },
         seedFor: (world: RunWorld) => sampleMode() === 'village' && world === 'buildings' ? String(villageSeed()) : '',
         mallLayout: (world: RunWorld) => sampleMallLayout(world),
+        marketStory: (world: RunWorld) => marketStory(world),
         tabs: () => leave(() => navigation().changeState('hideout')),
         title: () => { const r = hideoutRuntime.backToMenu(); if (!r.ok) { failed(r.message); return; } closeStation(); navigation().changeState('menu'); },
         exportSave: () => download(hideoutRuntime.exportBackup()),

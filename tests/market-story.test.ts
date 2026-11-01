@@ -75,7 +75,7 @@ test('market world keeps geometry and both authored access routes at either tide
 });
 
 test('all street encounter variants deploy with protected fixed cabinet and persisted deficit from pre-transfer inventory', () => {
-    for (let seed = 1; seed <= 30; seed++) {
+    for (const seed of [...Array.from({ length: 30 }, (_, i) => i + 1), 42]) {
         const f = fixture(); f.setup(d => { D.addItem(d.profile.bag, 'scrap', 2); D.addItem(d.profile.safe, 'wire', 1); });
         assert.ok(f.saves.beginRun(seed, true, { marketStory: true }), f.state.storageError);
         const record = decodeSession(f.raw), raid = record.expansion!.raid!, layer = raid.maps.coast, cabinet = layer.containers.find(c => c.id === STORY_CABINET)!;
@@ -83,6 +83,9 @@ test('all street encounter variants deploy with protected fixed cabinet and pers
         assert.deepEqual([cabinet.x, cabinet.y], [MARKET_ANCHORS[STORY_CABINET].x, MARKET_ANCHORS[STORY_CABINET].y]);
         assert.deepEqual(['scrap','wire','fuse'].map(id => D.count(cabinet.inventory, id)), [1,1,1]);
         for (const entity of [...layer.loot, ...layer.enemies, ...layer.containers.filter(c => c !== cabinet)]) assert.ok(Math.hypot(entity.x-cabinet.x, entity.y-cabinet.y) >= 43);
+        // The breaker is an observation point: no box, item or enemy shares its circle either (seed 42 once put a box on it).
+        const breaker = MARKET_ANCHORS['ch01-sc-breaker'];
+        for (const entity of [...layer.loot, ...layer.enemies, ...layer.containers.filter(c => c !== cabinet)]) assert.ok(Math.hypot(entity.x-breaker.x, entity.y-breaker.y) >= breaker.radius, `seed ${seed}: ${JSON.stringify([entity.x, entity.y])}`);
     }
 });
 

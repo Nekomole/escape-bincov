@@ -12,7 +12,7 @@ import { initializeBuildingRaid, buildingRunConfig } from './building-world';
 import { creditTraining } from './rpg';
 import { advanceRealTime } from './base';
 import { newStory, startStoryRun, syncStory, type StoryState } from './story';
-import { MARKET_WORLD, marketRunConfig, protectMarketCabinet } from './market-world';
+import { MARKET_WORLD, marketRunConfig, protectMarketAnchors } from './market-world';
 
 export type GameState = 'menu' | 'hideout' | 'run' | 'result';
 
@@ -337,7 +337,7 @@ export class SaveSession {
             else initializeBuildingRaid(expansion!, loadout, config, market ? MARKET_WORLD : undefined);
             if (buildings === true && !options.legacyEnemies) installStreetEncounter(expansion!.raid!, this.resolveWorld(expansion!.raid!.worldVersion)!);
             if (buildings === 'mall' && (options.mallLayout === 3 || options.mallLayout === 4) && !options.legacyEnemies) installMallEncounter(expansion!.raid!, this.resolveWorld(expansion!.raid!.worldVersion)!);
-            if (market) protectMarketCabinet(expansion!.raid!);
+            if (market) protectMarketAnchors(expansion!.raid!);
         }
         if (expansion) expansion.base.location = 'raid';
         const publishedLoadout = structuredClone(expansion?.raid?.loadout ?? checkpoint!.loadout);

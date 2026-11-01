@@ -130,7 +130,8 @@ await check('R3 沿海街区 deploys on the 2.5D view; outside the dressed corne
   const text = await where();
   assert.ok(text.startsWith('沿海街区 · 室外 / 一楼'), text);
   assert.ok(!text.includes('样板外'), text);
-  assert.deepEqual(await stored(), ['coast-buildings-v1']);
+  // A new street raid is the market story world (#83): the same streets, the tool cabinet and the market scenery.
+  assert.deepEqual(await stored(), ['coast-story-v1']);
   assert.equal(await page.evaluate(() => !!window.__bincov || !!window.__bincovSample), false, 'no test interface on the ordinary entry');
   await page.waitForTimeout(1500); await shot('R3-street-2.5d-seed42');
   await abandonPixi();

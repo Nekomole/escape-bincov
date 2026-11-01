@@ -65,6 +65,7 @@
     "test:mall-passages": "node --import tsx scripts/mall-passages.mjs",
     "test:mall-landing": "node --import tsx scripts/mall-landing.mjs",
     "test:mall-sample": "node scripts/mall-sample-test.mjs",
+    "test:market-view": "node --import tsx scripts/market-story-view-test.mjs",
     "test:raid-default": "node scripts/raid-default-test.mjs",
     "test:range": "node scripts/range-test.mjs",
     "test:gunsmith-bench": "node --import tsx scripts/gunsmith-bench-test.mjs",

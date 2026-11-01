@@ -38,18 +38,23 @@ export function marketRunConfig(seed: number | string, profile: SaveDataV1): Run
     return buildingRunConfig(seed, { ...base, ...partition });
 }
 
-/** Reserve the cabinet's interaction circle after existing luck/enemy placement. Move only initial colliding entities,
- * within their original map, preserving identities and goods. Authored enemy posts lie outside this circle. */
-export function protectMarketCabinet(raid: LayeredRaid): void {
-    const layer = raid.maps.coast, map = MARKET_WORLD.maps.coast, cabinet = MARKET_ANCHORS[STORY_CABINET];
+/**
+ * Reserve the cabinet's and the breaker's interaction circles after existing luck/enemy placement, so no ordinary box,
+ * loose item or enemy shares a spot with a story source (the slice's rule: containers and observation points never
+ * overlap; a box on the breaker took the player's first E). Moves only initial colliding entities, within their original
+ * map, preserving identities and goods. Authored enemy posts lie outside both circles.
+ */
+export function protectMarketAnchors(raid: LayeredRaid): void {
+    const layer = raid.maps.coast, map = MARKET_WORLD.maps.coast, kept = [MARKET_ANCHORS[STORY_CABINET], MARKET_ANCHORS['ch01-sc-breaker']];
+    const clear = (p: Point) => kept.every(anchor => separation(p, anchor) >= anchor.radius);
     const context = { definition: map, doors: layer.doors, highTide: true };
     const entities = [...layer.loot, ...layer.containers.filter(c => c.id !== STORY_CABINET), ...layer.enemies];
     for (const entity of entities) {
-        if (separation(entity, cabinet) >= cabinet.radius) continue;
+        if (clear(entity)) continue;
         if ('tactics' in entity && entity.tactics) throw new Error('剧情保护区与固定遭遇重叠。');
         const occupied = [...entities.filter(e => e !== entity), ...map.entries.map(e => e.at), ...WORLD.notes, ...WORLD.exits];
         const points = map.cells.flatMap((row, y) => row.map((_cell, x) => at(x, y)))
-            .filter(p => separation(p, cabinet) >= cabinet.radius && traversable(context, p, 'body', 10))
+            .filter(p => clear(p) && traversable(context, p, 'body', 10))
             .sort((a, b) => separation(a, entity) - separation(b, entity) || a.y - b.y || a.x - b.x);
         const point = points.find(p => { const landing = findLanding(context, p, occupied); return landing && landing.x === p.x && landing.y === p.y; });
         if (!point) throw new Error('剧情保护区没有合法迁移落点。');

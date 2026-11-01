@@ -26,7 +26,7 @@ import { artId, itemArtwork, painted } from './art/item-images';
 import { paintPortrait } from './art/portraits';
 import { sampleSupports, startCoastSample } from './coast-view/sample';
 import { enterStation, returnToStation, stationDefault } from './station-view/route';
-import { raidWorlds, sampleMallLayout, sampleMode, villageSeed } from './raid-areas';
+import { marketStory, raidWorlds, sampleMallLayout, sampleMode, villageSeed } from './raid-areas';
 import { provideNavigation } from './navigation';
 import { exportSave } from './save-export';
 import { toast } from './toast';
@@ -216,7 +216,7 @@ function deploy() {
     const stop = D.deployBlocker(app.save);
     if (stop) { toast(stop); return; }
     const cfg = app.runWorld === 'mall' ? mallRunConfig(app.seed || Date.now()) : generateRun(app.seed || (sampleMode() === 'village' && app.runWorld === 'buildings' ? villageSeed() : Date.now()));
-    if (!saved(saveSession.beginRun(cfg.seed, app.runWorld === 'mall' ? 'mall' : app.runWorld === 'buildings', { mallLayout: sampleMallLayout(app.runWorld) }))) return;
+    if (!saved(saveSession.beginRun(cfg.seed, app.runWorld === 'mall' ? 'mall' : app.runWorld === 'buildings', { mallLayout: sampleMallLayout(app.runWorld), marketStory: marketStory(app.runWorld) }))) return;
     app.shop = null; void startCoastSample();
 }
 function checkout() {

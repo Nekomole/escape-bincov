@@ -43,6 +43,8 @@ export interface StationHooks {
   seedFor(world: RunWorld): string;
   /** Layout revision for a new mall raid (3, the 2.5D one); undefined keeps the Runtime default. */
   mallLayout?(world: RunWorld): 1 | 2 | 3 | 4 | undefined;
+  /** Whether a new raid in this area deploys the market story world (#83). */
+  marketStory?(world: RunWorld): boolean;
   tabs(): void;
   title(): void;
   exportSave(): void;
@@ -251,7 +253,7 @@ export class StationHost {
   /** Read-only reaction: no transaction is started from here (the Runtime would refuse a re-entrant one). */
   private event(e: HideoutEvent) {
     this.snap = this.rt.snapshot();
-    if (e.type === 'power-restored') { this.ui.close(); this.seq = { kind: 'power', t: 0 }; this.scene.light.setPower('restored', true); this.audio.cue('relay'); this.ui.setQuickVisible(false); }
+    if (e.type === 'power-restored') { this.ui.holdTalk(); this.ui.close(); this.seq = { kind: 'power', t: 0 }; this.scene.light.setPower('restored', true); this.audio.cue('relay'); this.ui.setQuickVisible(false); }
     if (e.type === 'facility-built') this.colKey = '';
     if (e.type === 'production-complete') { this.ui.toast('工作台：一批成品可以领取了。', 'ok'); this.audio.cue('ok'); }
     if (e.type === 'practice-credited') { this.ui.toast(`练习收益 +${(e.amount * 100).toFixed(1)}% 成长`, 'ok'); this.audio.cue('credit'); this.trainingFlash = 1; }
@@ -272,7 +274,7 @@ export class StationHost {
   private deploy(world: RunWorld, seed: string) {
     if (this.seq) return;
     const mallLayout = this.hooks.mallLayout?.(world);
-    const r = this.rt.deploy({ world, seed: seed.trim() || this.hooks.seedFor(world), ...mallLayout ? { mallLayout } : {} });
+    const r = this.rt.deploy({ world, seed: seed.trim() || this.hooks.seedFor(world), ...mallLayout ? { mallLayout } : {}, ...this.hooks.marketStory?.(world) ? { marketStory: true } : {} });
     if (!r.ok || !r.runId) { this.ui.toast(r.ok ? '出击没有准备好。' : r.message, 'error'); this.audio.cue('error'); if (!r.ok && (r.reason === 'storage' || r.reason === 'conflict')) this.ui.showStorage(); return; }
     // The run is saved now: the gate animation plays, then the raid starts from that checkpoint.
     this.ui.discard(); this.ui.setQuickVisible(false);
@@ -465,7 +467,7 @@ export class StationHost {
       this.scene.setFit(q.t >= 1.4 && q.t <= 5.6 ? POWER_SHOT : null);
       q.t += dt;
       const lights = Math.floor((q.t - 1) * 6); if (q.t > 1 && q.t < 3.5 && lights !== Math.floor((q.t - 1 - dt) * 6)) this.audio.cue('lampOn');
-      if (q.t > 5.6) { this.seq = null; this.scene.setFit(null); this.ui.setQuickVisible(true); this.ui.toast(D.QUESTS.repair.radio, 'ok'); this.audio.cue('deliver'); }
+      if (q.t > 5.6) { this.seq = null; this.scene.setFit(null); this.ui.setQuickVisible(true); this.ui.toast(D.QUESTS.repair.radio, 'ok'); this.audio.cue('deliver'); this.ui.resumeTalk(); }
     } else if (q.kind === 'leave') {
       q.t += dt;
       if (q.t > 1.6) this.curtain = Math.min(1, this.curtain + dt * 1.6);
