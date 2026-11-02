@@ -44,7 +44,7 @@ CI 策略测试还守住五件事。[entry-docs.test.mjs](../scripts/ci/entry-do
 | --- | --- |
 | batch-1 | `test:browser`、`test:qol-expansion`、`test:station-tier2`、`test:shooting` |
 | batch-2 | `test:save-browser`、`test:asset-load`、`test:hud-release`、`test:issue26-inventory`、`test:mall-passages`、`test:station-hands` |
-| batch-3 | `test:desktop-input`、`test:portable`、`test:shop-drag`、`test:title`、`test:title-water`、`test:opening` |
+| batch-3 | `test:desktop-input`、`test:portable`、`test:shop-drag`、`test:title`、`test:title-water`、`test:opening`、`test:site`、`test:market-view` |
 | batch-4 | `test:issue26-station`、`test:issue26-spatial`、`test:tactical`、`test:art`、`test:systems`、`test:mobile` |
 | batch-5 | `test:buildings`、`test:station-tier1`、`test:shop-feedback`、`test:mobile-ux`、`test:range`、`test:gunsmith-bench` |
 | batch-6 | `test:enemy-720`、`test:loot-target`、`test:mall-sample`、`test:qol`、`test:coast-render-targets`、`test:hideout`、`test:gunsmith-flow` |

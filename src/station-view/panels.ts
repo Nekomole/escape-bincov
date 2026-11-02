@@ -1,7 +1,8 @@
 import { attachmentLines, gunPartsLine, saleLines, saleValue } from '../gunsmith/item-facts';
 import * as D from '../domain';
 import { countyMapHtml, deploymentRegion, deploymentWorld, regionBriefHtml, type CountyArt } from './deploy-map';
-import type { Attribute, CartView, FacilityInfo, HideoutSnapshot, PerkBoard, RunWorld, TrainingProgress } from '../hideout-runtime/contract';
+import type { Attribute, CartView, FacilityInfo, HideoutRuntime, HideoutSnapshot, PerkBoard, RunWorld, TrainingProgress } from '../hideout-runtime/contract';
+import type { StoryDialogue, StoryEntry } from '../story-dialogue';
 import { ATTRIBUTE_NAMES, PERK_UI, critContext, critView, perkPanel, perkWaiting, type CritView, type PerkCardView, type PerkPanelView, type PerkPreviewView } from '../perk-copy';
 import { RECIPES } from '../expansion-state';
 import { PREMIUM_LOCKED_NOTE, PREMIUM_OPEN_NOTE, premiumOrders } from '../gunsmith/premium';
@@ -179,13 +180,14 @@ export function saleConfirmHtml(warnings: string[]) {
   return `<div class="confirm"><p>这次出售会用掉还没完成的任务物资：</p><ul class="warnlist">${warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul><div class="acts">${btn('确认出售', 'sale-confirm', 'primary')}${btn('再想想', 'close')}</div></div>`;
 }
 
-export function questsHtml(s: HideoutSnapshot) {
+/** `talk`: the 小蔡 card (talkEntryHtml), placed in the right column above the log (first on narrow screens). */
+export function questsHtml(s: HideoutSnapshot, talk = '') {
   const p = s.profile;
   const cards = Object.entries(D.QUESTS).map(([id, q], i) => {
     const done = p.quests[id], needs = Object.entries(q.needs).map(([item, n]) => ({ item, n, have: total(s, item) })), ready = needs.every(x => x.have >= x.n);
     return `<article class="quest ${done ? 'done' : ready ? 'ready' : ''}"><header><span>0${i + 1}</span><b>${esc(q.name)}</b><em>${done ? '已交付' : ready ? '可以交付' : '等待物资'}</em></header><p>${esc(q.description)}</p>${unlockLine(id, done)}${done ? `<p class="reply">${esc(q.radio)}</p>` : `<ul>${needs.map(x => `<li class="${x.have >= x.n ? 'ok' : ''}">${icon(x.item, 20)}<span>${esc(D.ITEMS[x.item].name)}</span><b>${Math.min(x.have, x.n)} / ${x.n}</b></li>`).join('')}</ul>`}<footer><b>¥ ${q.reward}</b><small>${id === 'repair' ? '另解锁仓库扩建与基地设施' : '任务报酬'}</small>${done ? '<span class="tick">已完成</span>' : btn('交付物资', `quest:${id}`, ready ? 'primary' : '', ready ? '' : 'disabled')}</footer></article>`;
   }).join('');
-  return `<div class="radio"><div class="quests">${cards}</div><aside class="log"><small>水产站值守记录 · 累计出击 ${p.stats.runs} 次</small><h4>${s.power === 'restored' ? '供电已恢复。' : '目前靠应急电源供电。'}</h4><p>出击前查好路线，涉水会积累污染。以下时间从出击开始计算。</p><dl><div><dt>04:30</dt><dd>电台预警，离开浅滩。</dd></div><div><dt>05:00</dt><dd>潮位变化，高架路与海堤仍可通行。</dd></div></dl><div class="stats"><div><b>${p.stats.runs}</b><span>累计出击</span></div><div><b>${p.stats.extracts}</b><span>成功撤离</span></div><div><b>${p.stats.kills}</b><span>击败敌人</span></div></div><p class="muted">交付时会扣除仓库、背包或安全箱中的所需物资。放进安全箱的任务物品，撤离失败也保留。</p></aside></div>`;
+  return `<div class="radio"><div class="quests">${cards}</div>${talk}<aside class="log"><small>水产站值守记录 · 累计出击 ${p.stats.runs} 次</small><h4>${s.power === 'restored' ? '供电已恢复。' : '目前靠应急电源供电。'}</h4><p>出击前查好路线，涉水会积累污染。以下时间从出击开始计算。</p><dl><div><dt>04:30</dt><dd>电台预警，离开浅滩。</dd></div><div><dt>05:00</dt><dd>潮位变化，高架路与海堤仍可通行。</dd></div></dl><div class="stats"><div><b>${p.stats.runs}</b><span>累计出击</span></div><div><b>${p.stats.extracts}</b><span>成功撤离</span></div><div><b>${p.stats.kills}</b><span>击败敌人</span></div></div><p class="muted">交付时会扣除仓库、背包或安全箱中的所需物资。放进安全箱的任务物品，撤离失败也保留。</p></aside></div>`;
 }
 
 export function generatorHtml(s: HideoutSnapshot) {
@@ -194,6 +196,55 @@ export function generatorHtml(s: HideoutSnapshot) {
   return `<div class="gen"><div class="note-paper"><small>维修单</small><p>小蔡在水产市场留了备用物资：泵机零件三个、绝缘线圈两卷、陶瓷保险管一支。拿齐了就回来修电源。</p><p class="hand">旧交易厅后面配电间，我爸的工具柜，第二层。</p></div>
   <div class="gen-state ${done ? 'on' : ''}"><b>${done ? '供电正常' : '应急供电'}</b><span>${done ? '净水泵、电台和院里的灯都接上了。' : '只够电台和几盏应急灯。'}</span></div>
   ${done ? `<p class="muted">${esc(q.radio)}</p>` : `<ul class="needs">${needs.map(x => `<li class="${x.have >= x.n ? 'ok' : ''}">${icon(x.item, 24)}<span>${esc(D.ITEMS[x.item].name)}</span><b>${Math.min(x.have, x.n)} / ${x.n}</b></li>`).join('')}</ul>${btn('交付维修物资', 'quest:repair', ready ? 'primary wide' : 'wide', ready ? '' : 'disabled')}`}</div>`;
+}
+
+/** The radio station's three views: the task cards, the conversation with 小蔡 and the recall of what the player saw. */
+export type RadioTab = 'tasks' | 'talk' | 'recall';
+/** HideoutRuntime.story(): a detached projection, read afresh for every paint. */
+export type StoryBoard = ReturnType<HideoutRuntime['story']>;
+const TOPICS: readonly StoryEntry[] = ['start', 'location', 'radio', 'father', 'breaker', 'call'];
+const heard = (b: StoryBoard, id: StoryBoard['recall'][number]['id']) => b.recall.some(r => r.id === id);
+/** Something seen and not yet told: an unreported breaker or a call never mentioned. Deferring is a choice, not news. */
+export const storyNews = (b: StoryBoard) => heard(b, 'breaker-down') && !b.breakerReported || heard(b, 'heard-call') && b.callChoice === 'unselected';
+/** The topic a player opens, in the words the approved table gives each entry; the call only after it was heard. */
+export function topicLabel(e: StoryEntry, b: StoryBoard) {
+  switch (e) {
+    case 'start': return b.power === 'restored' ? '供电怎么样？' : '问小蔡';
+    case 'location': return '工具柜在哪？';
+    case 'radio': return '电台怎么回话？';
+    case 'father': return '你父亲？';
+    case 'breaker': return b.breakerReported ? '总闸的事' : '市场的事';
+    case 'call': return b.callChoice === 'told' ? '喊声的事' : '还有件事。';
+  }
+}
+const radioNav = (tab: RadioTab, b: StoryBoard) => `<nav class="seg radio-nav" aria-label="电台">${btn('任务', 'radio-tab:tasks', tab === 'tasks' ? 'on' : '', tab === 'tasks' ? 'aria-current="page"' : '')}${btn(`小蔡<i class="news-dot${storyNews(b) ? '' : ' off'}" aria-hidden="true"></i>`, 'radio-tab:talk', tab === 'talk' ? 'on' : '', tab === 'talk' ? 'aria-current="page"' : '')}${btn(`见闻 <small>${b.recall.length}</small>`, 'radio-tab:recall', tab === 'recall' ? 'on' : '', tab === 'recall' ? 'aria-current="page"' : '')}</nav>`;
+/** The 小蔡 card beside the task cards: the way into the conversation and the recall. Its size never changes. */
+export function talkEntryHtml(b: StoryBoard) {
+  const news = storyNews(b);
+  return `<section class="talk-entry"><header><b>小蔡</b><small>电台 · 值守</small><em class="news${news ? '' : ' off'}">有事可说</em></header><div class="acts">${btn('和小蔡说话', 'radio-tab:talk', news ? 'primary' : '')}${btn(`见闻 <small>${b.recall.length} 条</small>`, 'radio-tab:recall')}</div></section>`;
+}
+/**
+ * The conversation: a fixed box (topic, lines, a reserved error line, the options), the topic buttons in fixed slots
+ * and two read-only lines (the repair list's shortfall and the duty book). `d` is the open conversation's current reply
+ * (StoryConversation.view), null when none is open; `title` the topic's name as it was when opened (it stays while the
+ * facts change). Nothing here is a choice until an option button is pressed.
+ */
+export function talkHtml(b: StoryBoard, d: StoryDialogue | null, entry: StoryEntry | null, title: string, error: string) {
+  const lines = d ? d.lines.map(l => `<p>${esc(l)}</p>`).join('') : '<p class="idle">选一个话题。关掉对话不会替你选任何回答。</p>';
+  const options = d ? d.options.map(o => btn(esc(o.text), `say:${o.id}`, o.id === 'exit' ? 'leave' : '')).join('') : '';
+  const topics = TOPICS.map(e => {
+    const off = e === 'call' && !heard(b, 'heard-call'), on = !!d && entry === e;
+    return btn(topicLabel(e, b), `talk:${e}`, `${on ? 'on' : ''}${off ? ' off' : ''}`, off ? 'disabled aria-hidden="true" tabindex="-1"' : on ? 'aria-current="true"' : '');
+  }).join('');
+  const short = Object.entries(b.deficit).filter(([, n]) => n > 0).map(([id, n]) => `${D.ITEMS[id].name} ×${n}`);
+  const repair = b.power === 'restored' ? '已交付 · 供电恢复' : b.canSubmit ? '物资已齐，可以交付' : `还差 ${short.join('、')}`;
+  const duty = [b.breakerReported ? '市场总闸已拉下。' : '', b.callChoice === 'told' ? '配电区听到喊声，没有见到人。' : ''].filter(Boolean).join(' ');
+  return `<div class="talk">${radioNav('talk', b)}<section class="talk-box" aria-live="polite"><header><b>小蔡</b><small>${d && title ? esc(title) : '电台前'}</small></header><div class="talk-lines">${lines}</div><p class="talk-err" role="alert">${esc(error)}</p><div class="talk-opts">${options}</div></section><div class="talk-topics">${topics}</div><dl class="duty"><div><dt>维修单</dt><dd>${esc(repair)}</dd></div><div><dt>值班册</dt><dd>${esc(duty || '还没有市场的记录。')}</dd></div></dl></div>`;
+}
+/** What the player actually saw or heard, with its place; reading it records, costs and chooses nothing. */
+export function recallHtml(b: StoryBoard) {
+  const items = b.recall.map(r => `<article class="recall"><header><b>${esc(r.title)}</b><small>${esc(r.source)}</small></header><p>${esc(r.text)}</p></article>`).join('');
+  return `<div class="talk">${radioNav('recall', b)}<div class="recalls">${items || '<p class="muted">还没有见闻。在市场里看到、听到的事会记在这里，回来随时能翻。</p>'}</div><p class="muted note">只记你亲眼看到、亲耳听到的。翻看不会改变任何事。</p></div>`;
 }
 
 export function deployHtml(s: HideoutSnapshot, dep: { warnings: string[]; weight: number; carry: number }, world: RunWorld, seed: string, worlds: readonly RunWorld[], preview: string | null, art: CountyArt['regions'], narrow: boolean) {

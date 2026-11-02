@@ -6,6 +6,9 @@ import { paintGround, puddles, type GroundBake } from './art/ground';
 import { canvas, silhouette } from './art/paint';
 import { groundGeometry } from './art/surface';
 import { LOOT_FOOT, LOOT_H } from './art/props';
+import { BREAKER_FOOT, CABINET_FOOT, FREEZER_FOOT, paintBreaker, paintFreezer, paintToolCabinet } from './art/market';
+import { STORY_CABINET, STORY_WORLD } from '../story';
+import { MARKET_ANCHORS } from '../market-world';
 import { solWall, type SolArt } from './art/sol';
 import { LOW_H, ROOF_MARGIN, STOREY_H, WALL_H, paintCanopy, paintCeiling, paintDoorGuide, paintDownpipe, paintDoorFoot, paintLintel, paintLow, paintOpeningGuide, paintPassageGuide, paintRoof, paintStairLabel, paintStairs, paintWall, paintWallAC, wallKey, type WallSpec } from './art/structures';
 import { Fx } from './fx';
@@ -190,7 +193,8 @@ export class CoastView {
   /** `from`: the drawn muzzle (chest plane) the tracer starts at; `seen`: where the head was first shown (its tail never
    *  reaches back past it, so a tracer leaving a hidden room does not point into it). */
   private bullets = new Map<string, { g: Graphics; born: Point; vx: number; vy: number; from: Point | null; seen: Point | null; off: Point }>();
-  private crates = new Map<string, { s: Sprite; shadow: Sprite; empty: boolean; look: 'full' | 'empty' | 'open' }>();
+  /** Drawn crates (and the market's tool cabinet, #83) by container id, with the texture key of their current look. */
+  private crates = new Map<string, { s: Sprite; shadow: Sprite; empty: boolean; look: 'full' | 'empty' | 'open'; key: string }>();
   private loot = new Map<string, Sprite>();
   /** Muzzle flashes and knife swings; `t` is null until the frame that made one has been drawn (see present). */
   private muzzles: { s: Sprite; t: number | null; shooter?: string; weapon?: ActorView['weapon'] }[] = [];
@@ -227,6 +231,8 @@ export class CoastView {
   private blowGroups = new Map<string, { pellets: number; tier: BlowTier; angle: number | null; again: boolean; blown: boolean; bled: boolean }>();
   /** Crate whose loot panel is open (set by the host): drawn with its lid up. */
   openContainer: string | null = null;
+  /** The host's interaction names the market breaker (#83): it is outlined instead of the Runtime's own target. */
+  storyFocus = false;
   view = { w: 0, h: 0, s: 1, k: 1, dpr: 1, W: 0, H: 0 };
   last: ViewFrame | null = null;
   stats = { sprites: 0, occluders: 0, rebuilds: 0, frameMs: 0, droppedEvents: 0, events: 0, rebuildMs: 0 };
@@ -404,7 +410,7 @@ export class CoastView {
     for (const layer of [this.groundLayer, this.flat, this.shadows, this.sorted, this.xray, this.overhead]) for (const c of layer.removeChildren()) c.destroy();
     this.fx?.clear(); this.fireFx?.clear(); this.specials.clear(); this.shots.clear(); this.blowGroups.clear();
     for (const o of [...this.indoor, ...this.rising]) this.dropCrops(o.wall!);
-    this.occluders = []; this.indoor = []; this.rising = []; this.indoorOf = undefined; this.openingGuides = []; this.pendingChunks = []; this.doors.clear(); this.doorGuides.clear(); this.facedDoor = null; this.stairLabels.clear(); this.promptBox = null; this.actors.clear(); this.bullets.clear(); this.crates.clear(); this.loot.clear(); this.muzzles = []; this.swings = [];
+    this.occluders = []; this.indoor = []; this.rising = []; this.indoorOf = undefined; this.openingGuides = []; this.pendingChunks = []; this.doors.clear(); this.doorGuides.clear(); this.facedDoor = null; this.stairLabels.clear(); this.promptBox = null; this.actors.clear(); this.bullets.clear(); this.crates.clear(); this.loot.clear(); this.muzzles = []; this.swings = []; this.marketProps = []; this.breakerProp = null;
     this.debugG.clear();
   }
 
@@ -465,6 +471,7 @@ export class CoastView {
     }, mall);
     else this.buildGeneric(m, f, M, roofs);
     if (m.key.mapId === 'coast') this.dressCoast();
+    if (m.key.mapId === 'coast' && m.key.worldVersion === STORY_WORLD) this.dressMarket();
     // Awnings keep the pavement under them dry; the mall's footprint keeps all of its floor dry.
     const awnings = m.key.mapId === 'coast' ? [11, 25].map(tx => ({ x: tx * 32, y: 15 * 32 - 8, w: 4 * 32, h: 40 })) : isMall(m) ? [{ ...MALL_FOOTPRINT }] : [];
     this.tide.setMap(m);
@@ -603,6 +610,31 @@ export class CoastView {
     return o;
   }
 
+  /** The market story's standing scenery (#83), lit like the crates. */
+  private marketProps: Sprite[] = [];
+  private breakerProp: Sprite | null = null;
+  /**
+   * The market story's scenery in the old trading hall (#83): the chest freezer, the breaker box against the east wall
+   * and the painted edge of the switch room. None of it collides or is a target; the tool cabinet is the Runtime's own
+   * container (syncCrates) and the check prompt is the host's.
+   */
+  private dressMarket() {
+    const prop = (key: string, paint: () => HTMLCanvasElement, x: number, foot: number, footRow: number, height: number): Sprite => {
+      const s = new Sprite(this.tex.ensure(key, paint)); s.anchor.set(.5, footRow / height); s.position.set(Math.round(x), Math.round(foot)); s.zIndex = foot;
+      this.sorted.addChild(s); this.marketProps.push(s);
+      const shadow = new Sprite(this.tex.blob(Math.round(s.texture.width * .8), 6)); shadow.anchor.set(.5); shadow.position.set(Math.round(x) + 2, Math.round(foot) + 1); this.shadows.addChild(shadow);
+      return s;
+    };
+    const freezer = MARKET_ANCHORS['ch01-sc-freezer'], breaker = MARKET_ANCHORS['ch01-sc-breaker'];
+    prop('market:freezer', paintFreezer, freezer.x, freezer.y + 6, FREEZER_FOOT, 24);
+    // Against the east wall but wholly inside the hall (the wall column starts 16 px east of the anchor).
+    this.breakerProp = prop('market:breaker', paintBreaker, breaker.x + 3, breaker.y - 12, BREAKER_FOOT, 34);
+    // The switch room's painted edge on the floor: a dashed hazard line where the hall turns into it (x 27, rows 37-40).
+    const edge = new Graphics(), x = 27 * 32, y0 = 37 * 32, y1 = 41 * 32;
+    for (let y = y0 + 2; y < y1 - 2; y += 10) edge.rect(x, y, 2, Math.min(6, y1 - 2 - y)).fill({ color: 0xb8963e, alpha: .55 });
+    edge.rect(x + 2, y0 + 2, 1, y1 - y0 - 4).fill({ color: 0x14120f, alpha: .25 });
+    this.groundLayer.addChild(edge);
+  }
   private dressCoast() {
     const canopy = (tx: number, w: number, row: number) => {
       const key = `canopy:${w}`; this.tex.ensure(key, () => paintCanopy(w * 32));
@@ -978,14 +1010,17 @@ export class CoastView {
       if (c.kind !== 'crate') continue;
       seen.add(c.id);
       const empty = c.stacks === 0, look = empty ? 'empty' : this.openContainer === c.id ? 'open' : 'full';
+      // The market's tool cabinet (#83) is a container like any crate, drawn as 蔡建平's tall steel locker.
+      const cabinet = c.id === STORY_CABINET && this.map?.key.worldVersion === STORY_WORLD;
+      const key = cabinet ? `cabinet:${look}` : `crate:${look}`, tex = () => cabinet ? this.tex.ensure(key, () => paintToolCabinet(look)) : this.tex.crate(look);
       let e = this.crates.get(c.id);
       if (!e) {
-        const s = new Sprite(this.tex.crate(look)); s.anchor.set(.5, 22 / 28); s.position.set(Math.round(c.x), Math.round(c.y)); s.zIndex = c.y + 1;
-        const shadow = new Sprite(this.tex.blob(26, 6)); shadow.anchor.set(.5); shadow.position.set(Math.round(c.x) + 2, Math.round(c.y) + 1);
-        this.sorted.addChild(s); this.shadows.addChild(shadow); e = { s, shadow, empty, look }; this.crates.set(c.id, e);
+        const s = new Sprite(tex()); s.anchor.set(.5, cabinet ? CABINET_FOOT / 40 : 22 / 28); s.position.set(Math.round(c.x), Math.round(c.y)); s.zIndex = c.y + 1;
+        const shadow = new Sprite(this.tex.blob(cabinet ? 20 : 26, 6)); shadow.anchor.set(.5); shadow.position.set(Math.round(c.x) + 2, Math.round(c.y) + 1);
+        this.sorted.addChild(s); this.shadows.addChild(shadow); e = { s, shadow, empty, look, key }; this.crates.set(c.id, e);
       }
       if (e.empty !== empty) { e.empty = empty; this.fx.dust(c.x, c.y, this.rnd, 3); }
-      if (e.look !== look) { e.look = look; e.s.texture = this.tex.crate(look); }
+      if (e.look !== look) { e.look = look; e.key = key; e.s.texture = tex(); }
       e.s.visible = e.shadow.visible = visible(c.regionId);
     }
     for (const [id, e] of this.crates) if (!seen.has(id)) { e.s.destroy(); e.shadow.destroy(); this.crates.delete(id); }
@@ -1375,6 +1410,12 @@ export class CoastView {
 
   private updateHighlight(f: ViewFrame, visible: (r: string | null) => boolean) {
     const t = f.interaction, h = this.highlight; h.visible = false;
+    if (this.storyFocus && this.breakerProp) {
+      const b = this.breakerProp;
+      h.texture = this.tex.ensure('market:breaker|rim', () => rimOf(this.tex.canvas('market:breaker')));
+      h.anchor.set(.5, (b.anchor.y * b.texture.height + 1) / (b.texture.height + 2)); h.position.copyFrom(b.position);
+      h.visible = true; h.tint = 0xf2deaa; h.alpha = .75 + Math.sin(this.time * 6) * .25; return;
+    }
     if (!t || t.kind !== 'container' && t.kind !== 'ground') return;
     if (t.kind === 'container') {
       const c = f.containers.find(x => x.id === t.ref.id); if (!c || !visible(c.regionId)) return;
@@ -1382,8 +1423,9 @@ export class CoastView {
         const g = c.ownerUid ? this.actors.get(c.ownerUid) : null; if (!g?.corpse) return;
         h.texture = this.tex.ensure(`${g.corpseKey}|rim`, () => rimOf(this.tex.canvas(g.corpseKey))); h.anchor.set(.5, (g.corpse.anchor.y * g.corpse.texture.height + 1) / (g.corpse.texture.height + 2)); h.position.copyFrom(g.corpse.position);
       } else {
-        const key = `crate:${this.crates.get(c.id)?.look ?? (c.stacks ? 'full' : 'empty')}`;
-        h.texture = this.tex.ensure(`${key}|rim`, () => rimOf(this.tex.canvas(key))); h.anchor.set(.5, 23 / 30); h.position.set(Math.round(c.x), Math.round(c.y));
+        const drawn = this.crates.get(c.id); if (!drawn) return;
+        h.texture = this.tex.ensure(`${drawn.key}|rim`, () => rimOf(this.tex.canvas(drawn.key)));
+        h.anchor.set(.5, (drawn.s.anchor.y * drawn.s.texture.height + 1) / (drawn.s.texture.height + 2)); h.position.set(Math.round(c.x), Math.round(c.y));
       }
     } else {
       const l = f.loot.find(x => x.uid === t.ref.id); if (!l) return;
@@ -1426,7 +1468,7 @@ export class CoastView {
     }
     // The drawn sprite of a lit id and its texture key: a crate, a ground item or a corpse, only while it is drawn.
     const drawn = (id: string): { key: string; s: Sprite } | null => {
-      const crate = this.crates.get(id); if (crate?.s.visible) return { key: `crate:${crate.look}`, s: crate.s };
+      const crate = this.crates.get(id); if (crate?.s.visible) return { key: crate.key, s: crate.s };
       const item = this.loot.get(id), l = f.loot.find(x => x.uid === id); if (item?.visible && l) return { key: `loot:${l.item}`, s: item };
       const c = f.containers.find(x => x.id === id), g = c?.kind === 'corpse' && c.ownerUid ? this.actors.get(c.ownerUid) : undefined;
       return g?.corpse?.visible ? { key: g.corpseKey, s: g.corpse } : null;
@@ -1503,6 +1545,7 @@ export class CoastView {
       g.body.tint = tint; g.weapon.tint = tint; g.arms[0].tint = g.arms[1].tint = tint; if (g.corpse) g.corpse.tint = tint;
     }
     for (const [, c] of this.crates) c.s.tint = this.light.at({ x: c.s.x, y: c.s.y }, null, rv);
+    for (const s of this.marketProps) s.tint = this.light.at({ x: s.x, y: s.y }, null, rv);
     for (const s of this.sorted.children) if ((s as Sprite & { lowLit?: boolean }).lowLit) (s as Sprite).tint = this.light.at({ x: s.x + 16, y: s.y + 40 }, null, rv);
   }
 

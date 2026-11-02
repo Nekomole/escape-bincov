@@ -285,7 +285,39 @@ button.on { border-color: var(--amber); color: var(--amber2); }
 .panel.k-arms:not(.compact) .dtext b, .panel.k-med:not(.compact) .dtext b { line-height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .panel.k-arms:not(.compact) .dtext span, .panel.k-med:not(.compact) .dtext span { line-height: 15px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 
-.radio { display: grid; grid-template-columns: 1fr 200px; gap: 14px; }
+.radio { display: grid; grid-template-columns: 1fr 200px; grid-template-rows: auto 1fr; gap: 10px 14px; }
+.radio .quests { grid-row: 1 / span 2; } .radio .log { align-self: start; }
+/* 小蔡 (#83): the card beside the tasks, the conversation and the recall. Every box keeps its size when its text
+   changes; the error line and the news mark keep their place while empty. */
+.talk-entry { padding: 8px 10px; background: rgb(var(--ui-n3)); border: 1px solid var(--line); }
+.talk-entry header { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+.talk-entry header b { font: 16px var(--px); } .talk-entry header small { color: var(--mute); font-size: var(--ui-fs-s); flex: 1; }
+.talk-entry .news, .radio-nav .news-dot { color: var(--amber2); font-style: normal; font-size: var(--ui-fs-s); }
+.talk-entry .news.off, .radio-nav .news-dot.off { visibility: hidden; }
+.talk-entry .acts { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.talk-entry .acts button small, .radio-nav small { color: var(--mute); font-size: var(--ui-fs-s); }
+.radio-nav { margin: 0 0 8px; }
+.radio-nav .news-dot { display: inline-block; width: 6px; height: 6px; margin-left: 4px; vertical-align: 2px; background: var(--amber2); }
+.talk { display: flex; flex-direction: column; gap: 8px; }
+.talk-box { display: grid; grid-template-rows: auto 1fr 18px auto; height: 248px; padding: 10px 12px; background: rgb(var(--ui-n2)); border: 1px solid var(--line2); }
+.talk-box header { display: flex; align-items: baseline; gap: 8px; } .talk-box header b { font: 16px var(--px); color: var(--amber2); }
+.talk-box header small { color: var(--mute); font-size: var(--ui-fs-s); }
+.talk-lines { overflow-y: auto; padding: 6px 0 2px; } .talk-lines p { margin: 0 0 6px; font-size: 14px; line-height: 21px; color: var(--ink); }
+.talk-lines p.idle { color: var(--dim); font-size: var(--ui-fs-m); }
+.talk-err { margin: 0; font-size: var(--ui-fs-s); line-height: 18px; color: var(--bad); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.talk-opts { display: flex; flex-wrap: wrap; gap: 6px; min-height: 32px; align-content: flex-end; }
+.talk-opts button { padding: 4px 10px; text-align: left; } .talk-opts button.leave { color: var(--dim); }
+.talk-topics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.talk-topics button { padding: 5px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.talk-topics button.off { visibility: hidden; }
+.duty { margin: 0; padding: 8px 10px; background: rgb(var(--ui-n3)); border: 1px solid var(--line); font-size: var(--ui-fs-s); display: grid; gap: 4px; }
+.duty div { display: flex; gap: 8px; } .duty dt { color: var(--amber); flex: none; } .duty dd { margin: 0; color: var(--dim); }
+.recalls { display: flex; flex-direction: column; gap: 8px; }
+.recall { padding: 8px 12px; background: rgb(var(--ui-n2)); border: 1px solid var(--line); }
+.recall header { display: flex; align-items: baseline; gap: 8px; } .recall header b { font: 16px var(--px); } .recall header small { color: var(--mute); font-size: var(--ui-fs-s); }
+.recall p { margin: 4px 0 0; font-size: var(--ui-fs-m); color: var(--ink); }
+.talk .note { font-size: var(--ui-fs-s); margin: 0; }
+.panel.compact .talk-box { height: auto; min-height: 200px; }
 .quests { display: flex; flex-direction: column; gap: 10px; }
 .quest { padding: 10px 12px; background: rgb(var(--ui-n2)); border: 1px solid var(--line); }
 .quest.ready { border-color: var(--amber); } .quest.done { opacity: .75; }
@@ -468,7 +500,9 @@ button.pcard:hover:not(:disabled) { border-color: var(--amber); background: rgb(
 .panel.compact .details .dico { height: 28px; }
 .panel.compact .upgrade { margin-top: 4px; }
 @media (max-width: 900px) {
-  .radio { grid-template-columns: 1fr; }
+  .radio { grid-template-columns: 1fr; grid-template-rows: none; }
+  .radio .quests { grid-row: auto; } .radio .talk-entry { order: -1; }
+  .talk-entry .acts { grid-template-columns: 1fr 1fr; }
   .phead h2 { font-size: 16px; line-height: 20px; }
   .quick button kbd { display: none; }
   .quick button { padding: 6px 8px; }
