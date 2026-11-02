@@ -63,6 +63,8 @@ export async function startRange(): Promise<void> {
             get host() { return host; },
             stats: () => structuredClone(range.stats),
             targets: () => range.positions(),
+            /** The round the gun fires now and what the special rounds' effects draw (special-rounds.ts). */
+            fire: () => ({ round: core.round, ...host.view.fireStats }),
         });
     } catch (error) {
         console.error(error);

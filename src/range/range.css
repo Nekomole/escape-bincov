@@ -25,6 +25,11 @@ button { font: inherit; font-size: 14px; line-height: 18px; min-height: 30px; ma
   border: 1px solid rgb(var(--ui-n6)); border-radius: 0; cursor: pointer; touch-action: manipulation; white-space: nowrap; }
 button:hover, button:focus-visible { border-color: rgb(var(--ui-a)); outline: none; }
 button[aria-pressed="true"] { background: rgb(var(--ui-n5)); border-color: rgb(var(--ui-a)); color: rgb(var(--ui-n15)); }
+button:disabled { opacity: .42; cursor: default; border-color: rgb(var(--ui-n6)); }
+/* Tracer colour buttons: a swatch before the name (its colour or gradient in --sw); the rainbow spans two columns. */
+.rg-swatch::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 4px; vertical-align: 1px; background: var(--sw); box-shadow: 0 0 0 1px #0006; }
+.rg-wide { grid-column: span 2; }
+.rg-wide.rg-swatch::before { width: 20px; }
 .rg-head button { min-height: 26px; padding: 0 10px; font-size: 13px; }
 table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums; }
 th { font: 12px/18px var(--ui-sys); color: rgb(var(--ui-n11)); text-align: left; font-weight: 400; }

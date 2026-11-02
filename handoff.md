@@ -1,3 +1,12 @@
+## 2026-11-02 · 曳光弹与龙息弹，第一步：试枪场（维护者需求）
+
+分支 `feat/special-ammo`，基线 main `2b3fd7e9`。维护者要曳光弹和龙息弹，“要炫酷爆炸的那种”；问答定下先只在试枪场能打、存档不动，龙息弹只伤敌人，六个弹组都有曳光版；本地试玩后又要曳光颜色预设和彩虹曳光。[任务记录](docs/tasks/special-rounds.md)。
+
+- 实现：规则在新的 `src/special-rounds.ts`（`roundFits`、`DRAGON`、`FireField`、`TRACER_COLORS`）。Runtime 的 `round` / `tracerColor` 只由 `ShootingRange.setRound` / `setTracerColor` 设置；`shoot` 给弹丸记 `specials`（龙息弹 560 像素/秒、伤害 0.6 倍），落地经 `land` 排队，`updateFire` 在子弹之后炸开（34 像素、12 点、每枪每人一次）、点燃（每 0.5 秒 4 点共 3 秒，无视护甲）并留地火（2.5 秒）；`damageEnemy` 加 `fire` 参数（hurt 原因 `fire`），`damageLayerEnemy` 加 `through`。都不进检查点，重载和换层时 `quench`。契约加 shot / BulletView 的 `round`、`color`，`blast` 事件，ActorView `burning`，ViewFrame `fires`。画面 `coast-view/fire-fx.ts` 与 `art/fire.ts`（像素火球 8 帧、火苗 4 帧、焦痕、十字火花），scene 的 `drawSpecial` 画弹道，声音 `SynthAudio.blast` / `flame` / `crackle`。试枪场面板加“弹种”“曳光颜色”两行，命中统计不计火。字体子集加 7 个字（1213 字）。
+- 检查：新单测 `special-rounds.test.ts` 8 项；`test:range` 新增第二个用例（龙息弹炸开、着火、地火，曳光火花，彩虹在飞）。
+- 验证：见任务记录“验证”一节。`test:shooting` 的 k（拥挤战斗的声音预算）在本机失败，用 main `2b3fd7e9` 的构建对照同样连续两次失败，属于本机音频环境，以 CI 为准。
+- 遗留：第二步（物品、弹匣记弹种、存档版本、平衡）未开工；经典（非分层）行动路径接了但没测；真人/真机未验。
+
 ## 2026-11-02 · 任务物品绿框高亮（维护者需求）
 
 分支 `feat/quest-item-highlight`，基线 main `33adc85b`。维护者要任务需要的物品高亮（金边或绿边），并且“智能显示”：凑够以后外面的不再标，背包里的照样标。[任务记录](docs/tasks/quest-item-highlight.md)。

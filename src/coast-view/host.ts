@@ -46,7 +46,8 @@ const OUTRO_TEXT: Record<Outro, string> = { died: '你倒下了', extract: '撤�
  * still settled as a failure. 'failed' remains only for a reason this view does not know.
  */
 const OUTRO_OF: Record<string, Outro> = { extract: 'extract', death: 'died', timeout: 'timeout', abandon: 'abandon' };
-type Drain = Exclude<HurtCause, 'blow'>;
+/** Fire (dragon's breath) hurts enemies only, so it is never a drain on the player. */
+type Drain = Exclude<HurtCause, 'blow' | 'fire'>;
 /** Continuous damage (R6-L2) shown beside the health bar: label and the screen-edge tint while it lasts. */
 const DRAIN: Record<Drain, { label: string; tint: string }> = {
   bleed: { label: '流血', tint: '150,26,16' }, pollution: { label: '污染', tint: '104,128,36' },
@@ -285,7 +286,7 @@ export class CoastSampleHost {
     } else if (e.type === 'hurt' && e.uid === 'player') {
       // A blow of any size pulses the red edge; continuous causes add up into the drain readout instead (R6-L2).
       if (e.cause === 'blow') { this.hurtPulse = Math.min(1, this.hurtPulse + .45 + e.damage / 40); if (this.panel === 'loot') this.lootHitT = 1.2; }
-      else this.drains[e.cause].acc += e.damage;
+      else if (e.cause !== 'fire') this.drains[e.cause].acc += e.damage;
     }
     // Only the player's rounds crit, and their impact comes first in the batch: the marker it put up turns critical.
     else if (e.type === 'hurt' && e.critical && e.uid === this.markUid && this.markT > 0) this.critMark();
