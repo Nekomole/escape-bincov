@@ -1014,7 +1014,7 @@ export class CoastSampleHost {
     const market = b.stamp.world.worldVersion === STORY_WORLD, story = this.services.story();
     const breaker = story.recall.some(r => r.id === 'breaker-down');
     const hint = market ? `<p class="cs-hint-line">维修单：旧交易厅后头配电区，蔡建平的备用工具柜，第二层。</p><p class="cs-hint-line">${!breaker ? '可选：顺路看一眼配电箱的总闸。' : story.breakerReported ? '总闸：已确认拉下，小蔡已记下。' : '总闸：已确认拉下，回站可以告诉小蔡。'}</p>` : '';
-    const html = progress.map(qt => `<section><strong>${esc(qt.name)}</strong>${qt.needs.map(n => `<p>${esc(name(n.id))}：仓库 ${n.stored} · 携带 ${n.carried} / 需 ${n.needed}</p>`).join('')}${qt.key === 'repair' ? hint : ''}</section>`).join('') || '<p>全部任务已交付。</p>';
+    const html = progress.map(qt => `<section><strong>${esc(qt.name)}</strong>${qt.requirements.map(r => `<p>${esc(r)}</p>`).join('')}${qt.needs.map(n => `<p>${esc(name(n.id))}：仓库 ${n.stored} · 携带 ${n.carried} / 需 ${n.needed}</p>`).join('')}${qt.key === 'repair' ? hint : ''}</section>`).join('') || '<p>全部任务已交付。</p>';
     const recalled = story.recall.length, offered = market || recalled > 0;
     if (offered !== !this.q('[data-recall]').hidden || recalled !== this.recallShown) {
       this.q('[data-recall]').hidden = !offered; this.recallShown = offered ? recalled : -1;

@@ -296,7 +296,13 @@ export class RealHideoutRuntime implements C.HideoutRuntime {
     unequipCharm() { return this.transaction('charm-unequip', d => unequipCharm(d.profile, d.expansion)); }
     upgradeStash() { return this.transaction('stash-upgrade', d => D.upgradeStash(d.profile)); }
     claimRelief() { return this.transaction('relief', d => D.grantRelief(d.profile)); }
-    submitQuest(id: string) { return this.transaction('quest', d => Object.hasOwn(D.QUESTS, id) && D.submitQuest(d.profile, id)); }
+    submitQuest(id: string) {
+        return this.transaction('quest', d => {
+            if (!Object.hasOwn(D.QUESTS, id)) return false;
+            const requirements = D.questRequirements(d.profile, id);
+            return requirements.length ? fail('rule', requirements.join('；')) : D.submitQuest(d.profile, id);
+        });
+    }
     story() { return storyView(this.state.story, this.state.save); }
     /** Ephemeral conversation cursor; replies advance only after the single-record transaction is durable. */
     openStory(entry: StoryEntry = 'start'): C.StoryConversation | null {
