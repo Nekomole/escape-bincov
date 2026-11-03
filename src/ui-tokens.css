@@ -1,0 +1,56 @@
+/* Shared interface tokens (#163 batch 2, maintainer's pick 2026-10-31: the yard's amber on green-black). The title,
+   tab page, raid, yard, workbench and test range take their colours, type and spacing from here: the page's sheets read
+   :root, and the yard's shadow root inherits the same properties through its host.
+
+   Colours are "r g b" triplets, written rgb(var(--ui-n3)) or rgb(var(--ui-n3) / .9):
+   --ui-n0…n15   neutrals by lightness (OKLab L .15….96): n0–n4 backgrounds and cells, n5–n8 lines, n9–n12 secondary
+                 text, n13–n15 text. Dark steps lean green-grey, light steps warm, like the yard.
+   --ui-a-*      the one accent: -bg dark fill, -lo, -mid, main, -hi highlight, -pale.
+   --ui-b-* / --ui-g-* / --ui-i-* / --ui-w   bad, good, info and warm (warning) colours.
+   Only pure black/white shadows and highlights, and effect colours (the raid's blood vignette) stay literal. */
+:root {
+  --ui-n0: 8 12 13; /* #080c0d */
+  --ui-n1: 14 19 19; /* #0e1313 */
+  --ui-n2: 20 25 26; /* #14191a */
+  --ui-n3: 26 33 32; /* #1a2120 */
+  --ui-n4: 35 43 42; /* #232b2a */
+  --ui-n5: 46 56 53; /* #2e3835 */
+  --ui-n6: 57 70 64; /* #394640 */
+  --ui-n7: 73 86 79; /* #49564f */
+  --ui-n8: 86 100 92; /* #56645c */
+  --ui-n9: 122 120 108; /* #7a786c */
+  --ui-n10: 147 143 130; /* #938f82 */
+  --ui-n11: 163 158 143; /* #a39e8f */
+  --ui-n12: 189 183 167; /* #bdb7a7 */
+  --ui-n13: 215 209 191; /* #d7d1bf */
+  --ui-n14: 232 225 206; /* #e8e1ce */
+  --ui-n15: 250 241 220; /* #faf1dc */
+  --ui-a-bg: 69 53 21; /* #453515 */
+  --ui-a-lo: 102 82 40; /* #665228 */
+  --ui-a-mid: 159 129 71; /* #9f8147 */
+  --ui-a: 226 180 92; /* #e2b45c */
+  --ui-a-hi: 255 216 138; /* #ffd88a */
+  --ui-a-pale: 253 239 203; /* #fdefcb */
+  --ui-b-bg: 59 29 22; /* #3b1d16 */
+  --ui-b-lo: 137 73 60; /* #89493c */
+  --ui-b: 224 116 90; /* #e0745a */
+  --ui-b-hi: 238 181 166; /* #eeb5a6 */
+  --ui-b-pale: 253 211 199; /* #fdd3c7 */
+  --ui-g-bg: 42 62 40; /* #2a3e28 */
+  --ui-g-lo: 90 124 86; /* #5a7c56 */
+  --ui-g: 144 194 138; /* #90c28a */
+  --ui-g-hi: 212 236 213; /* #d4ecd5 */
+  --ui-i-lo: 107 154 175; /* #6b9aaf */
+  --ui-i: 128 178 200; /* #80b2c8 */
+  --ui-w: 222 167 126; /* #dea77e */
+}
+/* Type. Desktop text is never below --ui-fs-s; rules for phones keep their own sizes. One face per role:
+   --ui-px  Bincov Text, only at its native 16 px or 32 px: panel titles, headings, tabs, item labels, key numbers.
+   --ui-sys the system face: body text, notes, buttons, small labels and small numbers (tabular figures). */
+:root {
+  --ui-px: "Bincov Text", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --ui-sys: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Noto Sans CJK SC", sans-serif;
+  --ui-fs-s: 12px; --ui-fs-m: 13px; --ui-fs-px: 16px; --ui-fs-px2: 32px;
+  /* Spacing steps for new and shared layout rules. */
+  --ui-sp1: 4px; --ui-sp2: 8px; --ui-sp3: 12px; --ui-sp4: 16px; --ui-sp5: 24px;
+}

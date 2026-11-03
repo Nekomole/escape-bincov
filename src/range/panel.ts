@@ -11,6 +11,7 @@ import type { CoastSampleHost } from '../coast-view/host';
 import { MOVER, RANGE_BUILDS, RANGE_WEAPONS, TARGETS, type RangeWeapon, type ShootingRange, type RangeBuild } from './raid';
 import { partsSignature } from '../gunsmith/signature';
 import * as D from '../domain';
+import { roundFits, type RoundKind, type TracerColor } from '../special-rounds';
 /** Each build's signature, as the view publishes it for the gun in hand. */
 const BUILD_SIGS = Object.fromEntries((Object.keys(RANGE_BUILDS) as RangeBuild[]).map(b => [b, partsSignature(RANGE_BUILDS[b]())])) as Record<RangeBuild, string>;
 
@@ -21,6 +22,20 @@ const degrees = (radians: number) => `${(radians * 180 / Math.PI).toFixed(1)} �
 const percent = (share: number) => `${Math.round(share * 100)}%`;
 const text = (el: Element, value: string) => { if (el.textContent !== value) el.textContent = value; };
 const press = (el: Element, on: boolean) => { const v = String(on); if (el.getAttribute('aria-pressed') !== v) el.setAttribute('aria-pressed', v); };
+const able = (el: HTMLButtonElement, on: boolean) => { if (el.disabled === on) el.disabled = !on; };
+/** The 弹种 row (special-rounds.ts): the gun's ordinary rounds, a tracer for any gun, dragon's breath for shotguns. */
+const ROUNDS: readonly { id: 'ball' | RoundKind; label: string; title: string }[] = [
+    { id: 'ball', label: '普通弹', title: '枪自己的普通弹药' },
+    { id: 'tracer', label: '曳光弹', title: '所有枪可用：弹道发亮拖尾，命中迸火花；伤害不变' },
+    { id: 'dragon', label: '龙息弹', title: '霰弹枪专用：火焰弹丸落地炸开，点燃附近敌人并留下地火；不伤自己' },
+];
+/** The tracer colours: each button shows its swatch (CSS custom property --sw); the rainbow's spans two columns. */
+const COLORS: readonly { id: TracerColor; label: string; swatch: string }[] = [
+    { id: 'red', label: '红', swatch: '#ff5a2a' }, { id: 'green', label: '绿', swatch: '#52ff5e' },
+    { id: 'yellow', label: '黄', swatch: '#ffd23a' }, { id: 'white', label: '白', swatch: '#e6eeff' },
+    { id: 'blue', label: '蓝', swatch: '#4a92ff' }, { id: 'purple', label: '紫', swatch: '#c25aff' },
+    { id: 'rainbow', label: '彩虹', swatch: 'linear-gradient(90deg,#ff4a3a,#ffd23a,#52ff5e,#4a92ff,#c25aff)' },
+];
 
 const markup = (exit: string) => `<section class="rg" aria-label="试枪场">
 <header class="rg-head"><b>试枪场</b><button type="button" data-act="fold" aria-expanded="true">隐藏</button></header>
@@ -28,6 +43,10 @@ const markup = (exit: string) => `<section class="rg" aria-label="试枪场">
 <p class="rg-note">内存存档 · 不保存进度</p>
 <div class="rg-label">枪械</div>
 <div class="rg-grid four">${RANGE_WEAPONS.map(w => `<button type="button" data-gun="${w}" aria-pressed="false" title="${esc(w === 'knife' ? '水手匕首' : D.ITEMS[w].name)}">${esc(label(w))}</button>`).join('')}</div>
+<div class="rg-label">弹种</div>
+<div class="rg-grid">${ROUNDS.map(r => `<button type="button" data-round="${r.id}" aria-pressed="${r.id === 'ball'}" title="${esc(r.title)}">${esc(r.label)}</button>`).join('')}</div>
+<div class="rg-label">曳光颜色</div>
+<div class="rg-grid four">${COLORS.map(c => `<button type="button" class="rg-swatch${c.id === 'rainbow' ? ' rg-wide' : ''}" data-color="${c.id}" aria-pressed="${c.id === 'red'}" style="--sw:${c.swatch}" title="${esc(c.id === 'rainbow' ? '彩虹曳光：弹道颜色不停变换' : `${c.label}色曳光`)}">${esc(c.label)}</button>`).join('')}</div>
 <div class="rg-grid two rg-gap"><button type="button" data-build="light" aria-pressed="false" title="轻托、短护木加斜握把、开放红点、快换匣、轻握把">M4A1 轻快</button><button type="button" data-build="steady" aria-pressed="false" title="稳定托、精确枪管组、制退器、短护木加短前握、远距镜、稳握把">M4A1 稳定</button></div>
 <div class="rg-grid two rg-gap"><button type="button" data-act="mover" aria-pressed="true">移动目标：开</button><button type="button" data-act="reset">重新开始</button></div>
 <div class="rg-grid rg-gap"><button type="button" data-act="feel" class="rg-full" aria-pressed="true">打击感：新版</button></div>
@@ -63,8 +82,10 @@ export class RangePanel {
     private press(e: Event) {
         const button = (e.target as Element).closest<HTMLButtonElement>('button');
         if (!button) return;
-        const { gun, act, build } = button.dataset;
+        const { gun, act, build, round, color } = button.dataset;
         if (gun) this.range.arm(gun as RangeWeapon);
+        else if (round) this.range.setRound(round === 'ball' ? null : round as RoundKind);
+        else if (color) this.range.setTracerColor(color as TracerColor);
         else if (build) this.range.arm('mb4a1', build as RangeBuild);
         else if (act === 'mover') this.range.setMoving(!this.range.moving);
         else if (act === 'reset') this.range.reset();
@@ -109,6 +130,15 @@ export class RangePanel {
         const sig = b.frame.player.gun?.sig ?? '';
         for (const id of RANGE_WEAPONS) press(this.q(`[data-gun="${id}"]`), w.id === id && (id !== 'mb4a1' || sig === ''));
         for (const build of Object.keys(RANGE_BUILDS) as RangeBuild[]) press(this.q(`[data-build="${build}"]`), w.id === 'mb4a1' && sig === BUILD_SIGS[build]);
+        // Each special round the gun in hand can load is offered; the pressed one is what the next shot fires.
+        const ammo = w.magSize ? D.WEAPONS[w.id]?.ammo ?? null : null, chosen = this.range.core.round;
+        const loaded = chosen && roundFits(chosen, ammo) ? chosen : 'ball';
+        for (const r of ROUNDS) {
+            const el = this.q<HTMLButtonElement>(`[data-round="${r.id}"]`);
+            able(el, r.id === 'ball' || roundFits(r.id, ammo));
+            press(el, loaded === r.id);
+        }
+        for (const c of COLORS) press(this.q(`[data-color="${c.id}"]`), this.range.core.tracerColor === c.id);
         const mover = this.q('[data-act="mover"]');
         press(mover, this.range.moving); text(mover, this.range.moving ? '移动目标：开' : '移动目标：关');
         const feel = this.q('[data-act="feel"]'), classic = this.host.opts.feel === 'classic';

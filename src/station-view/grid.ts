@@ -2,17 +2,25 @@ import * as D from '../domain';
 import { MODIFIED_MARK, itemPicture } from '../art/item-images';
 import type { Scope } from '../view-lifecycle/scope';
 import { esc } from '../html';
+import type { QuestMarks } from '../qol';
 
 
-/** Grid markup: items are absolutely placed children; the grid carries its source id and cell size. */
-export function gridHtml(inv: D.Inventory, source: string, cell: number, selected: string | null, opts: { empty?: string } = {}) {
+/** Grids of goods the player does not hold yet: quest items there ring only while still short (qol.questMarks). */
+const OUTSIDE = new Set(['merchant', 'buy']);
+
+/**
+ * Grid markup: items are absolutely placed children; the grid carries its source id and cell size. With `marks`, quest
+ * items take the `need` ring: `wanted` on the counter and the buy list, `own` on the player's grids.
+ */
+export function gridHtml(inv: D.Inventory, source: string, cell: number, selected: string | null, opts: { empty?: string; marks?: QuestMarks } = {}) {
+  const ring = opts.marks && (OUTSIDE.has(source) ? opts.marks.wanted : opts.marks.own);
   const items = inv.items.map(i => {
-    const d = D.ITEMS[i.id], size = D.itemSize(i), w = size.w * cell, h = size.h * cell;
+    const d = D.ITEMS[i.id], size = D.itemSize(i), w = size.w * cell, h = size.h * cell, need = !!ring?.has(i.id);
     // The game's artwork at the largest whole scale that fits the cell box above the label (rotated items turn the art).
     const boxW = w - 6, boxH = h - (cell >= 40 ? 15 : 11), pic = itemPicture(i, boxW, boxH, !!i.rotated), aw0 = pic.w, ah0 = pic.h;
     const art = Math.max(1, Math.floor(Math.min(boxW / (i.rotated ? ah0 : aw0), boxH / (i.rotated ? aw0 : ah0))));
     const img = `<img alt="" draggable="false" src="${pic.url}" style="width:${aw0 * art}px;height:${ah0 * art}px;transform:translate(-50%,-50%)${i.rotated ? ' rotate(90deg)' : ''}">`;
-    return `<div class="item k-${d.kind}${selected === i.uid ? ' sel' : ''}${i.relief ? ' relief' : ''}" data-uid="${i.uid}" data-src="${source}" tabindex="0" role="button" aria-label="${esc(d.name)} × ${i.qty}" title="${esc(d.name)} × ${i.qty}" style="left:${i.x * cell}px;top:${i.y * cell}px;width:${w}px;height:${h}px"><span class="art">${img}</span>${pic.modified ? MODIFIED_MARK : ''}<span class="lbl">${esc(d.short || d.name)}</span>${i.qty > 1 ? `<span class="qty">${i.qty}</span>` : ''}</div>`;
+    return `<div class="item k-${d.kind}${selected === i.uid ? ' sel' : ''}${i.relief ? ' relief' : ''}${need ? ' need' : ''}" data-uid="${i.uid}" data-src="${source}" tabindex="0" role="button" aria-label="${esc(d.name)} × ${i.qty}${need ? '，任务需要' : ''}" title="${esc(d.name)} × ${i.qty}${need ? ' · 任务需要' : ''}" style="left:${i.x * cell}px;top:${i.y * cell}px;width:${w}px;height:${h}px"><span class="art">${img}</span>${pic.modified ? MODIFIED_MARK : ''}<span class="lbl">${esc(d.short || d.name)}</span>${i.qty > 1 ? `<span class="qty">${i.qty}</span>` : ''}</div>`;
   }).join('');
   // The stash overflow (#28 M3-12) shows below the grid, marked; nothing can be dropped there.
   const rows = D.stashShownRows(inv), band = rows > inv.h ? `<div class="overflow-band" style="top:${inv.h * cell}px;height:${(rows - inv.h) * cell}px"><span>溢出区 · 只能取出，清空后才能出击</span></div>` : '';

@@ -11,6 +11,7 @@ const groups = [
     'check-catalog.mjs', 'script-inventory.mjs', 'source-graph.mjs', 'enemy-catalog-data.ts', 'resource-report-input.mjs', 'station-resource-args.mjs',
     'shop-touch-cases.mjs', 'station-acceptance-gates.mjs', 'enemy-mall-browser.mjs', 'enemy-browser-plan.mjs',
   ] },
+  { kind: 'diagnostic', reason: '#83 mk-a29 市场两条路线的真实时钟机器人：院子出击面板进新世界，按片段路点走正面或后勤路线，开工具柜取料（后勤路线先检查总闸），再到最近撤离点按住撤离；敌人 AI 正常，只读状态，不改世界或时钟。node --import tsx scripts/market-route-play.mjs --route=front|service --seed=N；结果是可达与计时参考，不代替真人试玩。', files: ['market-route-play.mjs'] },
   { kind: 'support', reason: '自然游玩工具共用的只读采样、真实准备及自动玩家策略；由现役 natural-play 和 CI 反例导入。', files: [
     'natural-play-state.mjs', 'natural-play-preparation.mjs', 'natural-play-policy.mjs',
   ] },

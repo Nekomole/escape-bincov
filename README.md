@@ -14,101 +14,110 @@
 ### [🌊 官网](https://xuys2025.github.io/escape-bincov/) · [▶️ 在线试玩](https://xuys2025.github.io/escape-bincov/play/) · [🎯 试枪场](https://xuys2025.github.io/escape-bincov/play/?range=1) · [📦 下载离线版](https://github.com/xuys2025/escape-bincov/releases/download/main-latest/Escape-Bincov-portable.zip)
 
 <a href="https://xuys2025.github.io/escape-bincov/play/">
-  <img src="docs/station-relief-20261011/evidence/entry-1920x1080.png" alt="水产站雨夜院子：院门、火桶、居民与整备快捷入口" width="100%">
+  <img src="docs/readme/yard-1920x1080.png" alt="新档进站后的水产站院子：雨夜，火桶边站着两位居民，玩家站在院门前的出击准备点" width="100%">
 </a>
 
-<sub>实际构建截图 · 单人撤离生存 · 无账号 · 单文件离线运行 · 部分人物与场景仍为占位素材</sub>
+<sub>新档实际截图 · 单人撤离生存 · 浏览器直接玩，无需账号 · 单文件离线运行 · 美术仍在补齐</sub>
 
 </div>
 
 ## 🎒 回来，才算带走
 
-超强台风与异常赤潮封锁了虚构的滨科夫县。你从滨科夫水产站出发，在限时行动中搜集物资、应对交战，带着战利品回来交易、交任务、修建设施，再准备下一次出击。
+超强台风和异常赤潮封锁了虚构的滨科夫县。你在县城边的滨科夫水产站落脚，每次出门只有十分钟：搜物资，躲开或打倒拾荒者和更糟的东西，赶在潮水和时间之前撤回来。带回的东西拿去交易、交任务、修设施、改枪，再准备下一趟。
 
-游戏采用俯视角像素画面，**水产站院子和行动都使用 2.5D 画面**。项目仍在开发中，已有完整的「整备 → 出击 → 搜刮与交战 → 撤离或失败 → 回站」单人循环。
+死在外面，背包和手里的枪都留在那里；安全箱里的东西和水手匕首会跟你回来。
 
-> 本页于 **2026-10-23** 按已合并至 `main` 的内容核对，基线为 [`b475b1b`](https://github.com/xuys2025/escape-bincov/commit/b475b1b76a71af5223dc63971c75074547e390f6)。包版本号仍为 `0.2.0`；[v0.2.0 公告](docs/releases/v0.2.0.md)记录的是早期发版，后续已合并功能见下文。最新构建与上线状态以 [Actions](https://github.com/xuys2025/escape-bincov/actions/workflows/ci-pages.yml) 为准。
+游戏是俯视角像素画面，院子和行动都用 2.5D 画面。项目仍在开发，「整备 → 出击 → 搜刮与交战 → 撤离或失败 → 回站」的单人循环已经完整。
+
+> 本页按 **2026-11-03** 的 `main`（[`d441c49`](https://github.com/xuys2025/escape-bincov/commit/d441c491)）核对。包版本号仍是 `0.2.0`；[v0.2.0 公告](docs/releases/v0.2.0.md)是早期版本，之后合入的内容见[更新记录](CHANGELOG.md)。线上版本以最近一次成功的 [CI 与部署](https://github.com/xuys2025/escape-bincov/actions/workflows/ci-pages.yml)为准。
 
 ## 🏚️ 现在可以玩什么
 
-| 内容 | 已接入的玩法 |
+| 内容 | 已经能玩的 |
 | --- | --- |
-| 序幕 | 新档首次进站前播放开场动画，可暂停、跳过，也可从标题页「序幕」重看。 |
-| 水产站院子 | 雨夜院落、进屋揭顶、人物互动、修复供电；可步行、点击寻路，也可用快捷栏直接打开功能。 |
-| 整备与交易 | 仓库、背包、安全箱、武器与护符；拖放、旋转、拆分物品；修理铺和卫生所先加入购物车，再统一结算。 |
-| 据点成长 | 电台任务、仓库扩建、身体与成长，以及休息区、医疗区、训练区、工作台、黑市五项设施；支持生产、领取与实际走动训练。 |
-| 行动 | 两个区域入口、枪械与近战、箱子和尸体搜刮、地图与撤离指引；每局限时 10 分钟，撤离需要停稳并按住交互键 3 秒。 |
-| 射击 | 精瞄举枪、移动与急转带来的晃动、连续射击的散布和后坐；准星与武器卡显示当前状态。另有独立试枪场。 |
-| 搜刮与交互 | 「附近」列表可逐件拾取地面物品；治疗被拒、门被占用时显示原因，搜刮面板保留危险提示。 |
-| 潮汐与生存 | 行动第 4 分 30 秒预警、第 5 分钟潮位变化；留意污染、流血、水分、饱食与携行重量。 |
-| 存档与恢复 | 浏览器本地保存、检查点续局、JSON 备份迁移；交易与结算写入失败可重试，多窗口冲突有保护。 |
+| 序幕 | 新档第一次进站前播放开场动画，可暂停、跳过，也能从标题页「序幕」重看。 |
+| 水产站院子 | 雨夜院落、进屋揭顶、和居民说话、修复供电；可以走过去，也可以点地面寻路，或用快捷栏直接打开功能。 |
+| 整备与交易 | 仓库、背包、安全箱、武器与护符；拖放、旋转、拆分物品。修理铺和卫生所分「购买」「出售」两页，先放进交易单再统一结算。任务要的物品带绿框，凑够以后箱子和货架里的就不再标。 |
+| 据点成长 | 电台任务、仓库扩建，休息区、医疗区、训练区、工作台、黑市五项设施（生产、领取、走动训练）；力量、体质、技巧到 15/20/25/30 级各选一项 Perk，共 24 项。 |
+| 剧情 | 市场剧情第一段：在电台找小蔡谈话；街区里的冷柜、配电箱和工具柜留着线索，字幕和「见闻」记下你看到、听到的，回站后再决定告诉小蔡什么。 |
+| 改枪 | 二十把枪、一百件配件，外加二十件只能定制的「老栓精工」；改枪工作台、配置预设、拆弹匣。敌人手里拿什么枪，打倒后就掉什么枪。 |
+| 行动 | 两个区域，枪械与近战，箱子和尸体搜刮（「附近」列表可逐件拾取地上的东西），地图与撤离指引。每局限时 10 分钟，撤离要停稳并按住交互键 3 秒。进楼时挡视线的墙会沉下去，出来再升起。 |
+| 射击与手感 | 举枪精瞄；走动、急转和连射会带来晃动、散布和后坐。命中当帧闪白，枪声按枪种区分，暴击有标记，敌人有受击姿态。试枪场里还能试曳光弹和龙息弹。 |
+| 敌人 | 十八类敌人，分属拾荒者团伙、潮蚀生物、盐蚀者、雇佣兵、沿海封锁队五方：有的近身扑砍，有的守岗、报信、换弹，有的会跟你上楼；封锁队设卡登记，不一定开枪。 |
+| 潮汐与生存 | 行动第 4 分 30 秒预警、第 5 分钟潮位变化；留意污染、流血、水分、饱食与负重。 |
+| 存档 | 浏览器本地保存、检查点续局、JSON 导出导入；交易和结算写入失败可以重试，多窗口同时打开有冲突保护。 |
 
-出击面板以县域地图展示十二个规划区域：沿海街区、滨湾商场可以出击，其余十区标记「暂未开发」，可查看规划简介和区域情报示意图（概念插图，不是关卡截图）。老城街区位置提供现有沿海街区入口，完整老城仍待扩展。当前两处可玩区域都使用 2.5D 画面，美术仍在补齐：
+### 🗺️ 出击区域
+
+出击面板是一张县域地图，标着十二个规划区域。现在能去两处，其余十处标「暂未开发」，可以看规划简介和情报插图（插图是概念图，不是关卡截图）。
 
 | 区域 | 内容 | 美术进度 |
 | --- | --- | --- |
-| 沿海街区 | 沿海街区，以及可进入的居民楼一楼、二楼和地下 | 街口一带已精修；其余地方暂用通用画面 |
-| 滨湾商场 | 两层与露台（布局三版） | 正门广场到露台一段已布置；其余区域陆续补齐（[#47](https://github.com/xuys2025/escape-bincov/issues/47)） |
+| 沿海街区 | 街区，以及可进入的居民楼一楼、二楼和地下；新出击带市场剧情的线索点。十八类敌人按种子出现在不同地段。 | 街口一带已精修，其余地方暂用通用画面 |
+| 滨湾商场 | 两层商场和露台（布局四版）；没探过的房间是暗的，二层有拾荒小队。 | 家具和地面已换正式素材；外立面、楼梯等仍在补（[#47](https://github.com/xuys2025/escape-bincov/issues/47)） |
 
-原「沿海封锁区」和沿海街区是同一张地图，已经关闭，之后作为新地图重做。此前开始、还没结束的封锁区行动和商场旧布局行动，仍可从标题页「继续」，同样在 2.5D 画面上打完。
+原「沿海封锁区」和沿海街区是同一张地图，已经关闭，之后作为新地图重做。之前开始、还没打完的行动仍可从标题页「继续」，同样在 2.5D 画面上打完。
 
-![出击面板的县域战术地图：滨湾商场已选中，路线从水产站沿公路画出，右侧是区域情报插图与出发前检查](docs/tasks/county-map-select/1920x1080.png)
+![出击准备的县域地图：滨湾商场已选中，路线从水产站沿公路画过去，右侧是区域情报插图、出发前检查和开门出击按钮](docs/readme/county-map-1920x1080.png)
 
-<p align="center">
-  <img src="docs/tasks/county-map-select/1280x720-unbuilt.png" alt="选中暂未开发的灯塔岬角：周围局部点亮、灰白虚线准星，出击按钮显示暂未开发" width="76%">
-  <img src="docs/tasks/county-map-select/390x844.png" alt="手机竖屏的出击面板：完整县域地图、区域情报插图，出击按钮贴在屏幕底部" width="20%">
-</p>
+<table>
+  <tr>
+    <td width="50%"><img src="docs/readme/raid-street-1920x1080.png" alt="沿海街区交火：玩家持 M4A1 开着枪灯射击，一名拾荒者倒地，侦察兵正向同组报告最后目击位置"><br><sub>沿海街区交火：M4A1 开灯射击，侦察兵在向同组报位置</sub></td>
+    <td width="50%"><img src="docs/readme/gunsmith-bench-1920x1080.png" alt="改枪工作台：M4A1 上五处改动仍在预览，属性条显示操控下降、控制上升，底栏列出待改配件和确认按钮"><br><sub>改枪工作台：五处改动还在预览，按「确认」才装到枪上</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/readme/range-dragon-1920x1080.png" alt="试枪场：M1014 的龙息弹在靶子身上炸开，火焰和冲击圈"><br><sub>试枪场：M1014 龙息弹落地炸开</sub></td>
+    <td><img src="docs/readme/range-rainbow-1920x1080.png" alt="试枪场：M4A1 连发彩虹曳光，弹道一路变色"><br><sub>试枪场：M4A1 彩虹曳光连发</sub></td>
+  </tr>
+</table>
 
-<sub>2026-10-24 实际构建截图（新档，无资源或进度修改）：桌面 1920×1080 与 1280×720、手机竖屏 390×844。地图底图和区域插图是示意美术，插图不是关卡截图。实现与验证见[县域选图记录](docs/tasks/county-map-select.md#opus-视觉深化2026-10-24)。</sub>
-
-标题页、院子和所有行动都由 PixiJS 绘制；旧页签界面和结算页是 HTML 界面，背景为固定的站外画。各画面共用正式的会话、存档和交易服务。院子画面启动失败时会回到旧页签界面；玩家也可以主动切换。
-
-![训练区与设施面板：真实训练进度、修建材料与功能页签](docs/station-tier2-20261011/evidence/final/training-panel-1280x720.png)
-
-<sub>首图与训练面板复用 2026-10-11 的实际构建验收截图，包含测试用进度和物资配置，不代表新档初始资源。截图来源：[进站验收](docs/station-relief-20261011/README.md)、[训练与补给验收](docs/station-tier2-20261011/README.md)。</sub>
+<sub>2026-11-03 在 `d441c49` 的构建上实拍，1920×1080。院子和县域地图是普通入口的新档画面；交火、改枪台和试枪场用测试接口摆放了人物、枪与配件或读取靶位，画面与正常游玩一致。拍摄方法见[截图说明](docs/readme/README.md)。</sub>
 
 ## ▶️ 开始第一局
 
 游戏需要浏览器支持 **WebGL**；不支持时页面只显示提示，不进入游戏，存档不受影响。
 
-**在线：** 用电脑端 Chrome 或 Edge 打开[官网](https://xuys2025.github.io/escape-bincov/)，点「浏览器里开玩」；也可以直接打开[游戏页](https://xuys2025.github.io/escape-bincov/play/)。页面加载完成后，游戏运行无需外部素材、账号或服务器连接。游戏从 2026-10-31 起放在 `play/`，存档按网站保存，换地址不受影响；带游戏参数的旧链接（如 `?sample=village`、`?range=1`）会自动转过去。
+**在线：** 用电脑上的 Chrome 或 Edge 打开[官网](https://xuys2025.github.io/escape-bincov/)，点「浏览器里开玩」，或直接打开[游戏页](https://xuys2025.github.io/escape-bincov/play/)。页面加载完以后，不再需要外部素材、账号或服务器。游戏从 2026-10-31 起放在 `play/`；存档按网站保存，换地址不受影响，带游戏参数的旧链接（如 `?sample=village`、`?range=1`）会自动转过去。
 
-**离线：** 下载 [便携 ZIP](https://github.com/xuys2025/escape-bincov/releases/download/main-latest/Escape-Bincov-portable.zip)，解压到固定目录，双击 `start the game.html`。它是 `main` 最近一次通过全部检查的构建，每次验证成功后自动更新（[发布页](https://github.com/xuys2025/escape-bincov/releases/tag/main-latest)写明对应提交）。游玩无需 Node.js 或联网；若打开了编辑器，请右键选择 Chrome 或 Edge。
+**离线：** 下载[便携 ZIP](https://github.com/xuys2025/escape-bincov/releases/download/main-latest/Escape-Bincov-portable.zip)，解压到固定目录，双击 `start the game.html`。它是 `main` 最近一次通过全部检查的构建，每次验证成功后自动更新（[发布页](https://github.com/xuys2025/escape-bincov/releases/tag/main-latest)写着对应提交）。不需要 Node.js，也不用联网；如果打开的是编辑器，右键改用 Chrome 或 Edge 打开。
 
-1. **进站整备**：标题页点击「进入」，新档会先播放序幕，可点「跳过」或按 `Esc`。进入院子后按 `Tab` 打开整备，检查主武器、备用弹药和药品。购买的物资结算后进入仓库，需要自行整理到背包。
-2. **选择区域**：走到院门互动，或按 `G` 打开「出击准备」，选区域后出击。第一次可将行动种子留空。
-3. **搜刮与交战**：`M` 看地图与撤离点，`E` 拾取或打开箱子、尸体，`Tab` 整理背包。背包、搜刮和地图打开时，行动仍继续。
-4. **及时撤离**：到达本局启用的撤离区，停稳并按住 `E` 满 3 秒。成功保存结算后，在结果页返回水产站。
+1. **进站整备**：标题页点「进入」。新档先播序幕，可以点「跳过」或按 `Esc`。进院子后按 `Tab` 打开整备，看看主武器、备用弹药和药品。买来的东西结算后进仓库，要自己放进背包。
+2. **选择区域**：走到院门互动，或按 `G` 打开「出击准备」，在地图上选区域后出击。行动种子留空就是随机。
+3. **搜刮与交战**：`M` 看地图和撤离点，`E` 拾取或打开箱子、尸体，`Tab` 整理背包。背包、搜刮和地图打开时，时间照样在走。
+4. **及时撤离**：到本局开放的撤离区，停稳并按住 `E` 满 3 秒。结算保存成功后自动走回院子，进门弹出本局行动报告。
 
-成功撤离会保留带回的物资；死亡、超时或放弃会失去背包物资与主武器，安全箱物品和水手匕首保留。负重上限会受成长等状态影响，以界面显示为准。
+成功撤离带回所有物资；死亡、超时或放弃会丢掉背包物资和主武器，安全箱里的东西和水手匕首保留。负重上限会随成长等状态变化，以界面显示为准。
 
 ### 🎯 先试试枪
 
-打开 [试枪场](https://xuys2025.github.io/escape-bincov/play/?range=1)，可切换全部二十把枪（手枪、冲锋枪、霰弹枪、步枪、精确步枪、轻机枪）和匕首，以及 M4A1 的「轻快」「稳定」两套配装，对固定靶和移动靶练习。面板显示命中数、散布、后坐偏移与举枪进度；试枪场使用内存中的临时进度，**不读取或改写正式存档**，刷新后重置。
+打开[试枪场](https://xuys2025.github.io/escape-bincov/play/?range=1)，可以换全部二十把枪（手枪、冲锋枪、霰弹枪、步枪、精确步枪、轻机枪）和匕首，以及 M4A1 的「轻快」「稳定」两套配装，打固定靶和移动靶。弹种可选：
 
-本地源码仓库先运行 `pnpm build`，再双击 `试枪场.html`；下载的便携版则打开 `start the game.html`，在浏览器地址末尾加 `?range=1`。
+- **曳光弹**：所有枪可用，弹道发亮拖尾，命中迸火花，伤害不变；红、绿、黄、白、蓝、紫六色，另有一路变色的彩虹。
+- **龙息弹**：只限霰弹枪。火焰弹丸落地炸开，点燃附近的目标，地上留一小片火；不伤自己。
+
+面板显示命中数、散布、后坐偏移与举枪进度。试枪场用内存里的临时进度，**不读也不改正式存档**，刷新就重置。曳光弹和龙息弹目前只在试枪场能用，还不能带进行动。
+
+本地源码仓库先运行 `pnpm build`，再双击 `试枪场.html`；便携版打开 `start the game.html` 后，在地址末尾加 `?range=1`。
 
 ### 🔧 改装枪械
 
-改枪目录有二十把枪、一百件配件。老栓一开始出售旧式手枪、双管、卡宾、G17、P226、M870、MP5、M1911、基础配件，以及 G17 的微型点瞄和加长弹匣；完成电台任务后陆续上架 UMP45、AK-74、M4A1、AK-103、AUG、RPK；常规配件每次出击换一批；做完「未归的第七艘船」后，另有稀有配件的后期货架。稀有枪只能在沿海街区、商场的物资里找，少数尸体身上也有配件。
+老栓一开始卖旧式手枪、双管、卡宾、G17、P226、M870、MP5、M1911 和基础配件；电台任务推进后陆续上架 UMP45、AK-74、M4A1、AK-103、AUG、RPK。常规配件每次出击换一批。P90、Vector、M1014、SVD、M14、M700 不卖，只能在沿海街区和商场的物资里找，或者从拿着它的敌人身上捡。做完「未归的第七艘船」后，修理铺多一个稀有配件的后期货架。
 
-另有「老栓精工」的 20 件精品配件，每件在同位置最好，但不能买也找不到：做完「未归的第七艘船」、工作台升到 3 级后，在工作台设施页向老栓定制，交一件同位置的普通配件、一份精工件坯（只在头目、队长、班长身上和淹水的地方找得到）和现金，当场拿到。
+在整备里点主武器槽或枪详情上的「改装」，或在工作台设施页点「打开改枪」。点枪上的位置挑配件，点配件只改预览，按「确认」才会装上；换小弹匣时多出的子弹放回仓库。常用配置可以存成预设（每种枪最多 10 套），在同型号的枪上一键放进预览。M4A1、AK 这类弹匣让枪多占一行的，可以在弹匣位选「不装弹匣」，枪少占一行，弹匣放进仓库；没装弹匣的枪不能开火，也不能带着出击。
 
-在整备里点主武器槽或枪的详情上的「改装」，或在工作台设施页点「打开改枪」，进入改枪工作台。点枪身上的位置挑配件，点配件只改预览，按「确认」才会改到枪上；换小弹匣时多出的子弹放回仓库。弹匣让枪多占一行的枪（M4A1、AK 等），可以在弹匣位点「不装弹匣」把原厂弹匣拆下来，枪少占一行，弹匣放进仓库；没装弹匣的枪不能开火，也不能带着出击。常用的配置可以存成预设（每种枪最多 10 套），在同型号的枪上一键放进预览。商店可按类别筛选，或只看基地里的枪能用的配件。
+「老栓精工」有 20 件，每件在同位置最好，但买不到也捡不到：做完「未归的第七艘船」、工作台升到 3 级后，在工作台设施页向老栓定制，交一件同位置的普通配件、一份精工件坯（只在头目、队长、班长身上和淹水的地方找得到）和现金，当场拿到。
 
-枪上装了激光或灯光时，行动中按 `G` 开关激光、`F` 开关灯光，触屏点「设备」；装了双档瞄具时按 `V`（触屏「切档」）切换远近两档。精瞄时远距瞄具让视野看得更远，装了脚架的枪站定一会儿就会架稳。新街区和商场里持枪的敌人拿目录里的枪，打死后就能搜到这把枪；价格与收入的平衡仍在调。
+行动中，枪上装了灯光或激光时按 `F`、`G` 开关（触屏点「设备」）；装了双档瞄具按 `V` 切换远近两档（触屏点「切档」）。精瞄时远距瞄具看得更远，装了脚架的枪站定一会儿就会架稳。价格与收入的平衡仍在调。
 
 ### 样板入口（看美术进度用）
 
-普通入口已经是 2.5D 画面。另有两个样板入口，方便看美术做到哪里：[`?sample=village`](https://xuys2025.github.io/escape-bincov/play/?sample=village) 预选沿海街区，种子留空时挑一个从精修街口出发的种子；[`?sample=mall`](https://xuys2025.github.io/escape-bincov/play/?sample=mall) 预选滨湾商场。两个入口都会把还没精修的地方压暗，并在左上角地点后标「样板外」。
-
-本地仓库运行 `pnpm build` 后，可双击根目录的 `城中村试玩.html` 或 `商场试玩.html`。样板和普通入口在同一网站使用同一份存档。
+普通入口已经是 2.5D 画面。另有两个样板入口：[`?sample=village`](https://xuys2025.github.io/escape-bincov/play/?sample=village) 预选沿海街区，种子留空时挑一个从精修街口出发的种子；[`?sample=mall`](https://xuys2025.github.io/escape-bincov/play/?sample=mall) 预选滨湾商场。两个入口都会把还没精修的地方压暗，并在左上角地点后标「样板外」。本地仓库运行 `pnpm build` 后，可以双击根目录的 `城中村试玩.html` 或 `商场试玩.html`。样板和普通入口在同一网站共用一份存档。
 
 ### 保存与迁移
 
-存档保存在当前浏览器中，**没有云存档**。进入院子会受控升级旧存档并启用成长系统，保留原有的钱、物品、任务和统计。有进行中的行动时，从最近成功写入的检查点恢复，少量未保存进度可能回退。
+存档保存在当前浏览器里，**没有云存档**。旧存档进院子时会受控升级，保留原有的钱、物品、任务和统计。有进行中的行动时，从最近一次成功写入的检查点恢复，少量没来得及保存的进度可能回退。
 
-换浏览器、网站或本地文件路径前，在院子按 `Esc` 打开菜单，选择「导出存档」，再到新入口「导入存档」。导入需要确认覆盖，两份进度不会合并。遇到保存失败，请按界面提示重试或先导出备份。
+换浏览器、网站或本地文件路径前，在院子按 `Esc` 打开菜单，选「导出存档」，再到新入口「导入存档」。导入要确认覆盖，两份进度不会合并。遇到保存失败，按界面提示重试，或先导出备份。
 
 ## ⌨️ 操作
 
@@ -117,11 +126,12 @@
 | 输入 | 动作 |
 | --- | --- |
 | `W A S D` / 方向键，`Shift` | 移动，按住快走 |
-| 左键点地面 / 人物或设施 | 走到目标位置 / 走近并打开对应功能 |
-| `E` / 空格 | 与附近人物或设施互动 |
+| 左键点地面 / 人物或设施 | 走到那里 / 走近并打开对应功能 |
+| `E` / 空格 | 与附近的人物或设施互动 |
 | `1`～`7` | 整备、修理铺、卫生所、任务、设施、身体、出击 |
 | `Tab` / `J` / `C` / `G` | 整备 / 电台任务 / 身体与成长 / 出击准备 |
-| `0` | 切换到旧页签界面；可从该界面返回院子 |
+| `H` / `F1` | 操作说明 |
+| `0` | 切换到旧页签界面；可从那里返回院子 |
 | 滚轮 / `+` / `-` | 缩放视野 |
 | `Esc` | 关闭面板，或打开菜单；通电动画中可跳过 |
 
@@ -129,36 +139,36 @@
 
 | 输入 | 动作 |
 | --- | --- |
-| `W A S D` / `Shift` | 移动 / 冲刺；搜刮时按下即离开搜刮界面 |
-| 鼠标 / 左键 / 按住右键 | 瞄准 / 攻击（单发枪每次点击一枪，自动枪按住连发）/ 逐渐举枪精瞄 |
+| `W A S D` / `Shift` | 移动 / 冲刺；搜刮时按下就离开搜刮界面 |
+| 鼠标 / 左键 / 按住右键 | 瞄准 / 攻击 / 逐渐举枪精瞄 |
 | `R` / `1` / `2` | 换弹 / 主武器 / 水手匕首 |
-| `E` | 拾取、搜刮、开门或阅读；有效撤离区内按住 3 秒撤离 |
-| 滚轮 | 切换附近箱子、尸体目标 |
-| `Q` | 使用背包中的绷带或急救包 |
-| `Tab` / `M` | 背包 / 地图，均不暂停 |
-| `F` / `G` | 开关枪上的灯光 / 激光（装了对应设备时） |
-| `V` | 切换双档瞄具的远近两档（装了双档瞄具时） |
-| `Esc` | 关闭面板；没有面板时暂停，点击「继续」恢复 |
+| `E` | 拾取、搜刮、开门、检查或阅读；在撤离区内按住 3 秒撤离 |
+| 滚轮 | 切换附近的箱子、尸体等目标 |
+| `Q` | 使用背包里的绷带或急救包 |
+| `Tab` / `M` | 背包 / 地图，都不暂停 |
+| `J` | 见闻（市场剧情的行动里） |
+| `F` / `G` / `V` | 开关枪灯 / 开关激光 / 切换双档瞄具（装了对应配件时） |
+| `Esc` | 关闭面板；没有面板时暂停，点「继续」恢复 |
 
-M4A1 可以连发，其余枪械为单发。停步、举枪后射击更准；走动、急转和连续射击会增加晃动、散布或后坐，停火后逐渐恢复。切枪、换层不会立即消除这些代价，读档后也需重新稳定瞄准。
+冲锋枪、突击步枪（MP5、UMP45、P90、Vector、AK-74、AK-103、M4A1、AUG）和 RPK 按住左键连发；手枪、霰弹枪、卡宾枪和精确步枪每次点击一枪。停步、举枪后更准；走动、急转和连续射击会增加晃动、散布或后坐，停火后慢慢恢复。切枪、换层不会马上消掉这些代价，读档后也要重新稳住。
 
-整理库存可拖放或点选格位；拖动物品时 `R` 旋转、`Esc` 取消。商店购物车不支持旋转，物品加入待买或待卖后仍需点击「结算」。首次进入请点击游戏以启动声音，音量可在院子菜单或局内暂停面板调整。
+整理库存可以拖放或点选格位；拖动物品时按 `R` 旋转、`Esc` 取消。商店交易单不能旋转，物品放进交易单后仍要点「结算」。第一次进入请先点一下游戏画面来启动声音，音量在院子菜单或局内暂停面板里调。
 
 ### 📱 手机触控
 
-院子支持摇杆移动和点击互动，窄屏通过「功能」按钮打开整备、商店等面板；行动中使用双摇杆与屏幕按钮，推荐横屏。站定并把瞄准摇杆停在内圈会逐渐举枪，推到外圈开火：单发枪按自身射速重复射击，自动枪持续连发。枪上装了激光或灯光时，点「设备」开关；装了双档瞄具时，点「切档」。库存支持点选物品与格位；改枪工作台在手机上分枪身、配件、属性三页，确认和取消固定在底部。切到后台后，行动会暂停，回来需点击「继续」。
+院子支持摇杆移动和点击互动，窄屏通过「功能」按钮打开整备、商店等面板。行动中用双摇杆和屏幕按钮，推荐横屏：站定并把瞄准摇杆停在内圈会逐渐举枪，推到外圈开火，单发枪按自身射速重复射击，自动枪持续连发。枪上有灯光或激光时点「设备」，有双档瞄具时点「切档」。库存支持点选物品和格位；改枪工作台在手机上分枪身、配件、属性三页，确认和取消固定在底部。切到后台时行动会暂停，回来点「继续」。
 
-移动端目前通过的主要是 Chromium 视口与触控仿真；iPhone、Android 真机手感和性能仍待验收。没有手柄支持。
+移动端目前验证的主要是 Chromium 的手机视口和触控仿真；iPhone、Android 真机的手感和性能还没有验收。不支持手柄。
 
 ## 🚧 当前边界与反馈
 
-- **美术仍在补齐**：院子四位主要人物、关键道具、城中村首批素材，以及现有四类敌人的行走、尸体和持握图已接入。其余居民、环境与动画仍有占位或画风差异；全沿海精修、商场其余区域和院子昼夜变化尚未完成。
-- **敌人体系正在扩展**：新街区行动有近身掠夺者、枪手和望风者样板，可利用前摇、换弹和失联搜索的空隙；近身掠夺者亲眼看见你上楼时可能沿入口跟来。现有活动行动保持原规则。完整十八原型及其正式美术仍在开发，详见[样板范围](docs/tasks/enemy-street-encounter.md)。
-- **设计与可玩内容有区别**：十二地区地图、市场剧情与后续主线/人物结局尚未落地；改枪的二十枪、一百配件已经接入，经济平衡仍在开发。进度见下方文档导航与任务清单。
-- **长期稳定性仍需验证**：资源释放、行动恢复、交易与结算已有修复和回归；长期内存验收仍未完成。历史未签收项与后续缺陷分别见 [#32](https://github.com/xuys2025/escape-bincov/issues/32) 和 [#60](https://github.com/xuys2025/escape-bincov/issues/60)。
-- **自动通过不等于真人验收**：真机、实际 GPU 性能、长时间手感与平衡性仍需试玩反馈。多人联机、云存档未实现。
+- **美术仍在补齐**：院子主要人物、关键道具、城中村首批素材，以及十八类敌人的行走、受击、尸体图已经接入。其余居民、环境和动画仍有占位或画风不一；沿海其余地段的精修、商场建筑补图和院子昼夜变化还没做。
+- **内容还不多**：十二个规划区域只开放两个；剧情只有市场第一段，后面的主线节点、人物支线和结局还停在文稿（[#83](https://github.com/xuys2025/escape-bincov/issues/83)、[#84](https://github.com/xuys2025/escape-bincov/issues/84)、[#85](https://github.com/xuys2025/escape-bincov/issues/85)）。曳光弹和龙息弹做成正式物品是第二步，还没开工。
+- **数值还没平衡**：改枪的价格与收入、Perk、敌人强度都是提案，等真人试玩再调。
+- **长期稳定性仍在验证**：资源释放、行动恢复、交易与结算都有修复和回归，长时间运行的内存验收还没完成，见 [#32](https://github.com/xuys2025/escape-bincov/issues/32) 和 [#60](https://github.com/xuys2025/escape-bincov/issues/60)。
+- **自动检查通过不等于真人验收**：真机、实际 GPU 性能、长时间手感与平衡都需要试玩反馈。没有多人联机和云存档。
 
-玩家遇到的问题请补到 [玩家反馈 #26](https://github.com/xuys2025/escape-bincov/issues/26)，写明入口、浏览器/设备、操作步骤和截图；开发任务从 [统一任务清单](docs/WORK-QUEUE.md) 查找，按各 issue/PR 的最新状态接手。
+玩家遇到的问题请补到[玩家反馈 #26](https://github.com/xuys2025/escape-bincov/issues/26)，写明入口、浏览器或设备、操作步骤，最好附截图。开发任务从[统一任务清单](docs/WORK-QUEUE.md)查找，按各 issue / PR 的最新状态接手。
 
 ## 🛠️ 本地开发
 
@@ -172,66 +182,57 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 `http://127.0.0.1:4173`；样板入口在地址后加 `?sample=village` 或 `?sample=mall`。修改源码后刷新会重新构建。
+打开 `http://127.0.0.1:4173`，改了源码刷新就会重新构建；样板入口在地址后加 `?sample=village` 或 `?sample=mall`。
 
 | 命令 | 用途 |
 | --- | --- |
 | `pnpm test` | 领域规则、世界、Runtime、存档与事务单测 |
-| `pnpm build` | 严格类型检查，生成 `dist/index.html` 与 `start the game.html`（生成物不入库，下同） |
-| `pnpm package` | 构建并在 `release/` 生成离线 ZIP、网页 ZIP 和发布清单 |
+| `pnpm build` | 严格类型检查，生成 `dist/index.html` 和 `start the game.html`（生成物不入库，下同） |
+| `pnpm package` | 构建，并在 `release/` 生成离线 ZIP、网页 ZIP 和发布清单 |
+| `pnpm check:ci` | 工程守卫：源码依赖图、生成物不入库、入口文档链接等 |
 | `pnpm site` / `pnpm test:site` | 组装 Pages（根目录是官网 `site/`，游戏在 `play/`）并在 `http://127.0.0.1:5180` 预览 / 官网检查；都要先 `pnpm package` |
-| `pnpm test:station` / `pnpm test:hideout` | 院子交互与宿主切换 / 据点接口浏览器回归 |
-| `pnpm test:station-tier1` / `pnpm test:station-tier2` / `pnpm test:station-relief` | 计数与护符 / 训练与补给 / 进站救济专项 |
-| `pnpm test:raid-default` | 普通入口：两个区域、街区和商场走 2.5D、旧行动续玩、无 WebGL 提示 |
-| `pnpm test:coast-sample` | 真实 Runtime 上的完整城中村样板门禁（手动套件） |
-| `node scripts/coast-audio-test.mjs` | 样板实际音频输出、暂停与恢复 |
-| `pnpm test:shop-drag` / `pnpm test:save-browser` | 商店拖放及触控 / 存档失败、导入导出与回滚 |
-| `pnpm test:browser` / `pnpm test:desktop-input` | 基础浏览器流程 / 桌面输入 |
-| `pnpm test:shooting` / `pnpm test:range` | 射击对齐、遮挡与开火方式 / 试枪场、靶标与正式存档隔离 |
-| `pnpm test:opening` | 序幕首播、重看、跳过、暂停与存档隔离 |
-| `pnpm test:mobile` / `pnpm test:mobile-ux` | 手机视口、触控与面板操作 |
-| `pnpm test:portable` | 实际解压离线 ZIP 并验证启动与操作 |
-| `pnpm test:play` | 约 10 分钟真实计时自动行动，不能替代真人试玩 |
+| `pnpm test:browser` / `pnpm test:save-browser` | 基础浏览器流程 / 存档失败、导入导出与回滚 |
+| `pnpm test:station` / `pnpm test:raid-default` | 院子交互 / 普通出击入口与旧行动续玩 |
+| `pnpm test:shooting` / `pnpm test:range` | 射击与开火方式 / 试枪场与正式存档隔离 |
+| `pnpm test:mobile` / `pnpm test:portable` | 手机视口与触控 / 实际解压离线 ZIP 后启动 |
 
-浏览器检查前先执行 `pnpm package` 和 `pnpm exec playwright install chromium`；本地 Linux 缺少系统库时可用 `--with-deps`。已有 Chrome 可通过环境变量 `BINCOV_CHROME` 指定路径。Linux/macOS 便携包检查还需要 Python 3。完整命令见 [package.json](package.json)，测试选取与环境见 [开发手册](docs/AGENT-HANDBOOK.md)；CI 的浏览器分组、主机包缓存与 lavapipe 渲染器见 [CI 说明](docs/CI.md)。
+浏览器检查前先执行 `pnpm package` 和 `pnpm exec playwright install chromium`（本地 Linux 缺系统库时加 `--with-deps`）；已有 Chrome 可以用环境变量 `BINCOV_CHROME` 指定路径，Linux/macOS 的便携包检查还需要 Python 3。改了什么该跑哪些检查，见[按风险选检查](docs/CHECKS.md)；全部命令在 [package.json](package.json)，测试环境见[开发手册](docs/AGENT-HANDBOOK.md)，CI 的浏览器分组与渲染器见 [CI 说明](docs/CI.md)。
 
 ## 🤝 协作与发布
 
-本仓库是项目权威来源，`main` 是已接受版本。接手先读 [AGENTS.md](AGENTS.md)，从[代码导航](docs/CODEMAP.md)选择任务、定位契约和测试，再核对[任务清单当前入口](docs/WORK-QUEUE.md)与相关 PR 的实时状态。[开发手册](docs/AGENT-HANDBOOK.md)按相关流程/风险小节读取；[handoff.md](handoff.md)及历史报告按任务需要查证，不再要求每次全文加载。
+本仓库是项目的权威来源，`main` 是已接受的版本。接手先读 [AGENTS.md](AGENTS.md)，从[代码导航](docs/CODEMAP.md)找到任务对应的源码、契约和测试，再核对[任务清单](docs/WORK-QUEUE.md)顶部和相关 PR 的实时状态。[开发手册](docs/AGENT-HANDBOOK.md)按需要的小节读；[handoff.md](handoff.md) 和历史报告只在查证时读。
 
-当前只有一个行动 Runtime，兼容经典与分层两类存档；界面展示、实时模拟和最近检查点不是同一个状态。修改前先沿 [架构中的状态边界](docs/ARCHITECTURE.md) 确认权威值和提交入口。新增外部 ID、库存自动落格或计时逻辑时，保留非法输入、失败回滚和时间边界反例；本次审计及剩余风险见 [审计记录](docs/tasks/audit-contracts.md)。
+行动只有一个 Runtime，兼容经典与分层两类存档；界面显示、实时模拟和最近检查点不是同一份状态。改之前先看[架构中的状态边界](docs/ARCHITECTURE.md)，确认权威值和提交入口。
 
-同一交付目标继续原分支与 PR，独立任务才另开分支；不得覆盖他人工作或直接推送 `main`。打包生成的 HTML 和 ZIP 不提交，由 CI 构建。存档兼容、写入失败回滚与单文件离线能力必须保留。
+同一交付目标继续用原分支和原 PR，独立任务才另开分支；不覆盖别人的工作，不直接推送 `main`。打包生成的 HTML 和 ZIP 不提交，由 CI 构建。存档兼容、写入失败回滚和单文件离线能力必须保留。
 
-PR 经 CI 验证、维护者确认合并后，`main` 的 CI 成功才会更新 GitHub Pages 和离线下载包。**PR 提交、PR 合并和试玩上线是三个不同状态**；公开试玩以最后一次成功部署为准。托管与存档迁移见 [部署手册](docs/DEPLOYMENT.md) 和 [大陆在线游玩指南](docs/ONLINE-CHINA.md)。
+PR 经 CI 验证、维护者确认合并后，`main` 的 CI 成功才会更新 GitHub Pages 和离线下载包。**PR 提交、PR 合并和试玩上线是三个不同状态**，公开试玩以最后一次成功部署为准。托管与存档迁移见[部署手册](docs/DEPLOYMENT.md)和[大陆在线游玩指南](docs/ONLINE-CHINA.md)。
 
 ## 📚 文档导航
 
 | 内容 | 入口 |
 | --- | --- |
-| 剧情转化制作流程、十八事件卡与市场样板（内容规格，待接入） | [工作方案](docs/NARRATIVE-ADAPTATION-PLAN.md) · [事件与线索登记](docs/story/CONTENT-REGISTER.md) · [市场与回站样板](docs/story/CH01-MARKET-SLICE.md) |
-| 市场剧情首批实施范围、缺项与验收（草稿准备，未接入） | [实施任务书](docs/STORY-MARKET-IMPLEMENTATION.md) |
-| 开场动画（已接入；方案与截图记录各自制作阶段） | [分镜稿](docs/OPENING-CUTSCENE-SCRIPT.md) · [制作方案](docs/OPENING-CUTSCENE-PLAN.md) · [实际画面](docs/opening-cutscene-p0-20261015/README.md) |
-| 射击手感与试枪场（已接入）、改枪系统（开发中） | [射击实现与决定](docs/SHOOTING-SYSTEM-REWORK.md) · [改枪排期 PR #28](https://github.com/xuys2025/escape-bincov/pull/28) · [实施进度 #80](https://github.com/xuys2025/escape-bincov/issues/80) |
-| 院子与城中村整合范围、发布边界 | [整合说明](docs/IMPLEMENTATION-RELEASE.md) |
-| 水产站院子实现、快捷入口与真实接口 | [院子接线说明](docs/station-yard/README.md) · [HideoutRuntime](docs/hideout-runtime/README.md) |
-| 城中村逻辑与样板接线历史 | [Coast Runtime](docs/COAST-RUNTIME-SAMPLE.md) · [样板接线](docs/COAST-SAMPLE-VIEW.md) |
 | 游戏规则、物品与搜刮 | [游玩手册](docs/PLAYING.md) · [搜刮说明](docs/LOOTING.md) |
-| 成长、基地、建筑与商场设计 | [RPG 系统](docs/RPG-SYSTEM-DESIGN.md) · [暴击与 Perk（已排期，待实现）](docs/CRITICAL-PERK-DESIGN.md) · [可行性与实施安排](docs/tasks/critical-perk-plan.md) · [建筑逻辑](docs/BUILDING-LOGIC.md) · [商场地图](docs/MALL-VALIDATION-MAP.md) |
-| 现有四类敌人素材（已接入）、十八原型体系（开发中） | [素材与验收](docs/enemy-art/README.md) · [敌人详细设定](docs/ENEMY-DESIGN.md) · [实施进度 #78](https://github.com/xuys2025/escape-bincov/issues/78) |
-| 改枪系统：20 枪、100 配件（M0–M3 已合入，M4 经济与平衡进行中） | [改枪计划](docs/gunsmith/README.md) · [任务与排期](docs/gunsmith/TASKS.md) · [进度 #80](https://github.com/xuys2025/escape-bincov/issues/80) |
-| 世界观与长线故事（文稿已合入，后续玩法待开发） | [世界与主线](docs/WORLD-REGIONS-STORY.md) · [《等海退去》](docs/MAIN-STORY.md) · [文学改写记录](docs/story/GEMINI-REWRITE-20261014.md) |
-| 地图、主线与人物结局的后续实施 | [十二地区 #82](https://github.com/xuys2025/escape-bincov/issues/82) · [市场首批 #83](https://github.com/xuys2025/escape-bincov/issues/83) · [后续主线 #84](https://github.com/xuys2025/escape-bincov/issues/84) · [人物与结局 #85](https://github.com/xuys2025/escape-bincov/issues/85) |
-| 技术架构与贡献流程 | [架构](docs/ARCHITECTURE.md) · [贡献指南](CONTRIBUTING.md) · [任务清单](docs/WORK-QUEUE.md) |
+| 市场剧情（第一段已接入，真人试玩待做） | [接入说明](docs/tasks/market-story-core.md) · [市场与回站样板](docs/story/CH01-MARKET-SLICE.md) · [剧情转化方案](docs/NARRATIVE-ADAPTATION-PLAN.md) · [事件与线索登记](docs/story/CONTENT-REGISTER.md) · [#83](https://github.com/xuys2025/escape-bincov/issues/83) |
+| 世界观与长线故事（文稿已合入，玩法待做） | [世界与主线](docs/WORLD-REGIONS-STORY.md) · [《等海退去》](docs/MAIN-STORY.md) · [文学改写记录](docs/story/GEMINI-REWRITE-20261014.md) · [后续主线 #84](https://github.com/xuys2025/escape-bincov/issues/84) · [人物与结局 #85](https://github.com/xuys2025/escape-bincov/issues/85) |
+| 改枪（M0–M4 已合入，试玩与 M5 验收待做） | [改枪计划](docs/gunsmith/README.md) · [任务与排期](docs/gunsmith/TASKS.md) · [规则](docs/gunsmith/CONTRACTS.md) · [进度 #80](https://github.com/xuys2025/escape-bincov/issues/80) |
+| 射击、打击感与特殊弹 | [射击实现与决定](docs/SHOOTING-SYSTEM-REWORK.md) · [曳光弹与龙息弹](docs/tasks/special-rounds.md) · [打击感 #75](https://github.com/xuys2025/escape-bincov/issues/75) |
+| 敌人（十八类已接入街区，十二区域待接） | [敌人设定](docs/ENEMY-DESIGN.md) · [街区样板](docs/tasks/enemy-street-encounter.md) · [素材与验收](docs/enemy-art/README.md) · [#78](https://github.com/xuys2025/escape-bincov/issues/78) |
+| 成长、暴击与 Perk（已接入，平衡待做） | [RPG 系统](docs/RPG-SYSTEM-DESIGN.md) · [暴击与 Perk 设计](docs/CRITICAL-PERK-DESIGN.md) · [实现契约](docs/tasks/critical-perk-contract.md) · [#77](https://github.com/xuys2025/escape-bincov/issues/77) |
+| 地图、区域与建筑 | [县域选图](docs/tasks/county-map-select.md) · [十二地区 #82](https://github.com/xuys2025/escape-bincov/issues/82) · [商场 2.5D](docs/mall-2-5d/README.md) · [室内墙体与视野](docs/INDOOR-WALL-VISIBILITY-PLAN.md) · [建筑逻辑](docs/BUILDING-LOGIC.md) |
+| 水产站院子与据点接口 | [院子接线说明](docs/station-yard/README.md) · [HideoutRuntime](docs/hideout-runtime/README.md) |
+| 开场动画 | [分镜稿](docs/OPENING-CUTSCENE-SCRIPT.md) · [制作方案](docs/OPENING-CUTSCENE-PLAN.md) · [实际画面](docs/opening-cutscene-p0-20261015/README.md) |
+| 官网与 `play/` 入口 | [官网记录](docs/tasks/official-site.md) |
+| 技术架构与贡献流程 | [架构](docs/ARCHITECTURE.md) · [代码导航](docs/CODEMAP.md) · [贡献指南](CONTRIBUTING.md) · [任务清单](docs/WORK-QUEUE.md) · [按风险选检查](docs/CHECKS.md) · [CI 说明](docs/CI.md) |
 | 历史版本与验收记录 | [更新记录](CHANGELOG.md) · [历史证据归档](docs/IMPLEMENTATION-ARCHIVE.md) · [交接记录](handoff.md) |
 
-设计文档描述的长期目标不等于当前已实现内容；旧验收报告中的测试数量与结论仅适用于其注明的提交。
+设计文档写的是长期目标，不等于已经实现；旧验收报告里的测试数量和结论只适用于它注明的提交。
 
 ## 🎨 素材与许可
 
-画面混合使用程序绘制和已内嵌的 PNG 素材，包含 AI 生成并经整理、校验的角色、道具与场景图片；声音通过 Web Audio 合成。游戏运行不依赖外部素材或 CDN，地名、组织、人物与故事均为虚构。
+画面混合使用程序绘制和内嵌的 PNG 素材，其中有 AI 生成、经过整理和校验的角色、道具与场景图片；声音由 Web Audio 合成。游戏运行不依赖外部素材或 CDN。地名、组织、人物与故事都是虚构的。
 
-PixiJS 及其依赖的许可，以及内嵌字体的 OFL 声明，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，声明也随 HTML 保留。**公开仓库不等于已授予开源许可证**；原创源码目前未另行附加许可证。
+PixiJS 及其依赖的许可，以及内嵌字体的 OFL 声明，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，这些声明也随 HTML 保留。**公开仓库不等于授予了开源许可**；原创源码目前没有另附许可证。
 
 <div align="center">
 

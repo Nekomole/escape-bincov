@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 import { browserOptions } from './browser-options.mjs';
 import * as D from '../src/domain.ts';
 import { assertFrames, assertFallback, assertSupplyRefused, assertSupplyUsed, assertTraining } from './station-acceptance-gates.mjs';
-import { skipOpening } from './yard-entry.mjs';
+import { atRaidRelease, releasedState, skipOpening, watchOldPage, yardReport } from './yard-entry.mjs';
 import { readManagedTables, readPixiEvents } from './pixi-managed-gate.mjs';
 import { reportFilter, stepFilter } from './step-filter.mjs';
 /** The legacy key only ever held profiles up to v2: the same profile without gun fields (save v6 added them). */
@@ -134,7 +134,7 @@ try {
     await page.waitForTimeout(1200);
     const g = await page.evaluate(() => ({ bincov: '__bincov' in window, station: '__station' in window, frame: getComputedStyle(document.querySelector('#frame')).visibility, quick: !!document.querySelector('#station-yard').shadowRoot.querySelector('[data-quick="gear"]') }));
     assert.deepEqual(g, { bincov: false, station: false, frame: 'hidden', quick: true });
-    const r = await record(); assert.equal(r.version, 9); assert.equal(r.expansion.version, 3); assert.equal(r.profile.cash, 700);
+    const r = await record(); assert.equal(r.version, 10); assert.equal(r.expansion.version, 3); assert.equal(r.profile.cash, 700);
     await shot('A1-yard-1280x720');
     return `院子挂载，#frame 隐藏；存档 v${r.version}，扩展 v${r.expansion.version}，现金 ${r.profile.cash}`;
   });
@@ -482,7 +482,7 @@ try {
     await page.locator('[data-action="enter"]').click(); await yardReady();
     return '标题 ⇄ 院子';
   });
-  await step('G3 真实出击（沿海街区，2.5D）：开门动画 → 局内 → 撤离 → 返回走进院门并显示行动报告', async () => {
+  await step('G3 真实出击（沿海街区，2.5D）：开门动画 → 局内 → 撤离 → 不经结算页直接走进院门，显示唯一的行动报告', async () => {
     const runs0 = (await snap()).profile.stats.runs;
     await place(27.5, 19.8); await page.keyboard.press('7'); await until(() => window.__station.host.ui.kind === 'deploy', 2000, 'deploy');
     await page.locator('#station-yard >> #seed').fill('42'); await shot('G3-deploy');
@@ -493,11 +493,12 @@ try {
     assert.deepEqual(during, { state: 'run', roots: 0, seed: 42 });
     await page.evaluate(() => { const b = window.__bincovSample.host.lastBatch, d = window.__bincovSample.driver; d.freezeAI(true); d.placePlayer(b.map.exits[0].at, 0); });
     await page.waitForTimeout(600); await shot('G3-raid');
-    // Hold E through the three-second extraction; the result page follows the outro.
+    // Hold E through the three-second extraction; after the outro the yard walks in by itself (#163: one report).
+    await watchOldPage(page);
     await page.keyboard.down('e'); try { await page.waitForFunction(() => window.__bincov.app.state === 'result', null, { timeout: 20000 }); } finally { await page.keyboard.up('e'); }
-    await shot('G3-result'); await page.locator('[data-action="return"]').click(); await yardReady();
+    await yardReady(); assert.equal((await st()).seq, 'return');
     await page.waitForTimeout(500); await shot('G3-walk-in');
-    await until(() => window.__station.host.ui.kind === 'report', 8000, 'report');
+    await until(() => window.__station.host.ui.kind === 'report', 8000, 'report'); await yardReport(page);
     const s = await snap(); assert.equal(s.profile.stats.runs, runs0 + 1); assert.equal(s.arrival, null);
     assert.equal(await page.evaluate(() => window.__bincov.hideoutRuntime.consumeArrival()), null);
     await verifyReport('first ordinary raid');
@@ -506,7 +507,7 @@ try {
     assert.equal((await st()).panel, null, '刷新后不应重播报告');
     return `出击 ${runs0} → ${s.profile.stats.runs}；报告只播放一次`;
   });
-  await step('G4 开门动画中刷新：标题恢复原行动（不重开、不进院子），撤离后回到院子', async () => {
+  await step('G4 开门动画中刷新：标题恢复原行动（不重开、不进院子），撤离后直接回到院子', async () => {
     await page.keyboard.press('7'); await until(() => window.__station.host.ui.kind === 'deploy', 2000, 'deploy');
     await page.locator('[data-act="deploy"]').click(); await page.waitForTimeout(900);
     const runId = (await snap()).profile.activeRun.runId;
@@ -519,9 +520,9 @@ try {
     await page.waitForFunction(() => window.__bincovSample.host.panel === 'pause'); await page.keyboard.press('Escape');
     await page.waitForFunction(() => window.__bincovSample.host.panel === null);
     await page.evaluate(() => { const b = window.__bincovSample.host.lastBatch, d = window.__bincovSample.driver; d.freezeAI(true); d.placePlayer(b.map.exits[0].at, 0); });
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(600); await watchOldPage(page);
     await page.keyboard.down('e'); try { await page.waitForFunction(() => window.__bincov.app.state === 'result', null, { timeout: 20000 }); } finally { await page.keyboard.up('e'); }
-    await page.locator('[data-action="return"]').click(); await yardReady(); await until(() => window.__station.host.ui.kind === 'report', 8000, 'report');
+    await yardReady(); await until(() => window.__station.host.ui.kind === 'report', 8000, 'report'); await yardReport(page);
     return `恢复的行动 ${runId} 与动画前写入的一致`;
   });
   await step('G5 城中村样板（?sample=village）：院子与局内轮用一个 Pixi 应用；受跟踪计数对照', async () => {
@@ -544,12 +545,13 @@ try {
     await page.evaluate(() => window.__bincovSample.driver.freezeAI(true));
     await page.evaluate(() => window.__bincovSample.driver.placePlayer({ x: 208, y: 122 }, Math.PI / 2));
     await page.waitForTimeout(300); await shot('G5-village-raid');
+    // The yard follows the outro at once and takes the Application back, so the parked state is read when the raid lets go of it.
+    await watchOldPage(page);
+    await atRaidRelease(page, source => { const a = window.__solIdentity.app.deref(); return { counts: window.__station.counts(), children: a.stage.children.length, ticker: a.ticker.started, attached: a.canvas.isConnected, events: (0, eval)('(' + source + ')')(a.renderer) }; }, readPixiEvents.toString());
     await page.keyboard.down('e'); try { await page.waitForFunction(() => window.__bincov.app.state === 'result', null, { timeout: 20000 }); } finally { await page.keyboard.up('e'); }
-    await page.waitForFunction(() => !document.querySelector('.coast-sample'));
-    const c2 = await page.evaluate(() => window.__station.counts()); assert.equal(c2.parked, 1); assert.equal(c2.apps, 0);
-    const parked=await page.evaluate(source=>{const a=window.__solIdentity.app.deref();return{children:a.stage.children.length,ticker:a.ticker.started,attached:a.canvas.isConnected,events:(0,eval)('('+source+')')(a.renderer)};},readPixiEvents.toString());
+    const { counts: c2, ...parked } = await releasedState(page); assert.equal(c2.parked, 1); assert.equal(c2.apps, 0); assert.equal(c2.roots, 0);
     assert.equal(parked.children,0);assert.equal(parked.ticker,false);assert.equal(parked.attached,false);assert.equal(parked.events.attached,false);assert.equal(parked.events.native,0);assert.ok(Object.values(parked.events.roots).every(x=>x===false));report.coverage.parkedApplication=parked;
-    await page.locator('[data-action="return"]').click(); await yardReady(); await until(() => window.__station.host.ui.kind === 'report', 8000, 'report');
+    await yardReady(); await until(() => window.__station.host.ui.kind === 'report', 8000, 'report'); await yardReport(page);
     await verifyReport('village raid');
     await page.waitForTimeout(450); await shot('G5-village-return-report');
     await page.locator('.report [data-act="close"]').click(); const c3 = await settled();
@@ -557,7 +559,7 @@ try {
     await page.evaluate(()=>{delete window.__solIdentity;});
     for (const k of ['listeners', 'tickers', 'views', 'apps', 'parked', 'roots']) assert.equal(c3[k], c0[k], `${k}: ${c0[k]} → ${c3[k]}`);
     assert.ok(c3.gpuTextures - c3.scene <= c0.gpuTextures - c0.scene + 2, `GPU 纹理 ${c0.gpuTextures}（院子 ${c0.scene}）→ ${c3.gpuTextures}（院子 ${c3.scene}）`);
-    return `院子 apps ${c0.apps}/parked ${c0.parked} → 局内 apps ${c1.apps}/parked ${c1.parked} → 结果页 parked ${c2.parked} → 回院子相同；GPU 纹理 ${c0.gpuTextures}（院子 ${c0.scene}）→ ${c3.gpuTextures}（院子 ${c3.scene}）`;
+    return `院子 apps ${c0.apps}/parked ${c0.parked} → 局内 apps ${c1.apps}/parked ${c1.parked} → 结算后 parked ${c2.parked} → 回院子相同；GPU 纹理 ${c0.gpuTextures}（院子 ${c0.scene}）→ ${c3.gpuTextures}（院子 ${c3.scene}）`;
   });
   await step('G6 院子重挂 20 次：监听、ticker、视图、应用计数回到基线，GPU 纹理与托管槽不增长', async () => {
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
@@ -608,6 +610,78 @@ try {
     }
     return `揭开 ${hidden.join('、')}；门牌“${tag}”${walked}`;
   };
+  // #163: once a raid is saved the yard shows its one report; the result page and the tab page's dialog are fallbacks.
+  const raidAtExit = async () => {
+    await page.keyboard.press('7'); await until(() => window.__station.host.ui.kind === 'deploy', 2000, 'deploy');
+    await page.locator('#station-yard >> #seed').fill('42'); await page.locator('[data-act="deploy"]').click();
+    await page.waitForFunction(() => !!window.__bincovSample?.host?.lastBatch && !window.__station.mounted, null, { timeout: 30000 });
+    await page.evaluate(() => { const b = window.__bincovSample.host.lastBatch, d = window.__bincovSample.driver; d.freezeAI(true); d.placePlayer(b.map.exits[0].at, 0); });
+    await page.waitForTimeout(600);
+  };
+  const extractNow = async () => { await page.keyboard.down('e'); try { await page.waitForFunction(() => window.__bincov.app.state === 'result', null, { timeout: 20000 }); } finally { await page.keyboard.up('e'); } };
+  await step('G8 结算已写入、回站被拒（另一窗口在结局动画中接管存档）：留在结算页兜底，不开院子，不覆盖另一窗口的存档', async () => {
+    await open({ fixture: preset('repaired') }); await raidAtExit();
+    // A second window of the same game origin; it only writes the save, like a newer client would.
+    await ctx.route('https://station.test/writer', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>writer</title>' }));
+    const peer = await ctx.newPage(); await peer.goto('https://station.test/writer');
+    await extractNow();
+    // The settlement is on disk before anything else happens; the other window writes a newer record during the outro.
+    const settledRecord = await record();
+    assert.equal(settledRecord.profile.activeRun, null); assert.equal(settledRecord.terminal?.outcome, 'extract');
+    const newer = { ...settledRecord, revision: settledRecord.revision + 1, terminal: null, profile: { ...settledRecord.profile, cash: settledRecord.profile.cash + 111 } };
+    await peer.evaluate(r => localStorage.setItem('escape-bincov.session.v2', JSON.stringify(r)), newer);
+    const back = page.locator('#ui .panel.result [data-action="return"]');
+    await back.waitFor({ timeout: 20000 });
+    const g = await page.evaluate(() => ({ state: window.__bincov.app.state, conflict: window.__bincov.app.conflict, mounted: window.__station.mounted, roots: document.querySelectorAll('#station-yard').length, heading: document.querySelector('#ui .panel.result h2')?.textContent }));
+    assert.deepEqual(g, { state: 'result', conflict: true, mounted: false, roots: 0, heading: '你回来了。' });
+    await shot('G8-return-refused-result-page');
+    // 「返回水产站」 asks again and is refused again; the other window's record stays as it wrote it.
+    await back.click(); await page.waitForTimeout(800);
+    assert.deepEqual(await page.evaluate(() => ({ state: window.__bincov.app.state, mounted: window.__station.mounted })), { state: 'result', mounted: false });
+    assert.deepEqual(await record(), newer);
+    await peer.close();
+    return `结算写入 revision ${settledRecord.revision}；另一窗口写入 ${newer.revision} 后停在结算页，再点返回仍拒绝，记录未被覆盖`;
+  });
+  await step('G9 结算后院子启动失败：退回页签界面，行动报告作为对话框出现一次，关闭后页签可用', async () => {
+    await open({ fixture: preset('repaired') });
+    const runs0 = await page.evaluate(() => window.__bincov.app.save.stats.runs); await raidAtExit();
+    // Only the yard's next start fails (creating its shadow root); the raid itself ends normally.
+    await page.evaluate(() => { const attach = Element.prototype.attachShadow; Element.prototype.attachShadow = function (init) { if (this.id !== 'station-yard') return attach.call(this, init); Element.prototype.attachShadow = attach; throw new Error('injected yard start failure (test)'); }; });
+    await extractNow();
+    const dialog = page.locator('#ui .overlay .panel.result[aria-modal="true"]');
+    await dialog.waitFor({ timeout: 20000 });
+    const g = await page.evaluate(() => ({ state: window.__bincov.app.state, overlay: window.__bincov.app.overlay, station: !!window.__bincov.app.station, roots: document.querySelectorAll('#station-yard').length, tabs: !!document.querySelector('#ui .panel.hideout'),
+      focused: document.activeElement?.dataset.action ?? null, arrival: window.__bincov.hideoutRuntime.snapshot().arrival, runs: window.__bincov.app.save.stats.runs, toast: document.querySelector('#toast')?.textContent ?? '' }));
+    assert.match(g.toast, /院子画面启动失败/);
+    assert.deepEqual({ ...g, toast: undefined }, { state: 'hideout', overlay: 'report', station: false, roots: 0, tabs: true, focused: 'close', arrival: null, runs: runs0 + 1, toast: undefined });
+    assert.match(await dialog.innerText(), /行动报告[\s\S]*成功撤离[\s\S]*你回来了。/);
+    await shot('G9-yard-failed-report-dialog');
+    await dialog.locator('[data-action="close"]').click();
+    await page.waitForFunction(() => !document.querySelector('#ui .overlay') && !!document.querySelector('#ui .panel.hideout'));
+    assert.equal(await page.evaluate(() => window.__bincov.app.overlay), '');
+    // The route logs its own startup failure once; that expected line is not a page error.
+    const expected = report.errors.filter(line => line.split('\n')[0] === '[console] Error: injected yard start failure (test)');
+    assert.equal(expected.length, 1, 'one logged yard start failure'); report.expectedLogs.push({ step: 'G9', lines: expected });
+    report.errors.splice(report.errors.indexOf(expected[0]), 1);
+    return `出击 ${runs0} → ${g.runs}；页签界面上的报告对话框关闭后可用`;
+  });
+  await step('G10 回站被拒一次：结算页兜底显示报告；再点「返回水产站」走进院子，不弹第二份报告', async () => {
+    await open({ fixture: preset('repaired') }); await raidAtExit();
+    // Test-side fault: the Runtime refuses the first return once, as it does when that write fails (hideout-runtime.test).
+    await page.evaluate(() => { const rt = window.__bincov.hideoutRuntime, real = rt.returnToBase; rt.returnToBase = function () { rt.returnToBase = real; return { ok: false, reason: 'storage', message: '存档未写入（测试）。' }; }; });
+    await extractNow();
+    const back = page.locator('#ui .panel.result [data-action="return"]');
+    await back.waitFor({ timeout: 20000 });
+    assert.equal(await page.evaluate(() => window.__station.mounted), false);
+    assert.match(await page.locator('#ui .panel.result').innerText(), /行动报告[\s\S]*成功撤离[\s\S]*你回来了。/);
+    await shot('G10-refused-once-result-page');
+    await back.click(); await yardReady(); assert.equal((await st()).seq, 'return');
+    await until(() => window.__station.host.debug.seq === null, 10000, 'walk-in'); await page.waitForTimeout(400);
+    const after = await st(); assert.equal(after.panel, null, '结算页已显示过报告，院子不再弹');
+    assert.equal(await page.evaluate(() => window.__bincov.hideoutRuntime.snapshot().arrival), null);
+    await shot('G10-walked-in-no-second-report');
+    return '结算页 → 返回水产站 → 走进院子，没有第二份报告';
+  });
   await step('H1 F01 侧门：发电机房→电台、食堂→宿舍、院子→加工间', async () => {
     await open({ fixture: preset('repaired') });
     const a = await sideDoor([26.2, 4.6, 0], 'radio', '电台 →', 'd', 'radio', 28); await shot('H1-side-door-gen');
@@ -958,6 +1032,58 @@ try {
     const open2 = await goState();
     assert.equal(open2.disabled, false);
     return `溢出 2 件 → 拖进背包；出击按钮 ${blocked.disabled ? '禁用' : '可用'} → ${open2.disabled ? '禁用' : '可用'}`;
+  });
+  await step('H19 两档桌面：七个页签在最窄面板里放得下，整备的武器行和携行重量不断开，快捷栏居中', async () => {
+    const rows = [];
+    for (const size of [[1280, 720], [1920, 1080]]) {
+      await open({ fixture: preset('repaired'), size });
+      const quick = await page.evaluate(() => { const r = document.querySelector('#station-yard').shadowRoot.querySelector('.quick').getBoundingClientRect(); return Math.round(r.left + r.width / 2 - innerWidth / 2); });
+      assert.ok(Math.abs(quick) <= 1, `${size}: 快捷栏偏离中线 ${quick}px`);
+      // Every tab shares one frame now (H20); a tab whose right edge passes the strip is cut.
+      const tabs = {};
+      for (const [key, kind] of [['4', 'radio'], ['5', 'facility'], ['6', 'body'], ['1', 'gear']]) {
+        await page.keyboard.press(key); await until(k => window.__station.host.ui.kind === k, 3000, kind, kind); await page.waitForTimeout(150);
+        tabs[kind] = await page.evaluate(() => { const t = document.querySelector('#station-yard').shadowRoot.querySelector('.panel .ptabs'), box = t.getBoundingClientRect(); return { width: Math.round(box.width), spare: Math.floor(box.right - t.lastElementChild.getBoundingClientRect().right) }; });
+        assert.ok(tabs[kind].spare >= 0, `${size} ${kind}: 最后一个页签被截 ${JSON.stringify(tabs[kind])}`);
+      }
+      const gear = await page.evaluate(() => {
+        const root = document.querySelector('#station-yard').shadowRoot, m = root.querySelector('.gear .meter'), b = m.querySelector(':scope > b').getBoundingClientRect(), label = m.querySelector(':scope > span').getBoundingClientRect();
+        return { weightH: Math.round(b.height), sameRow: Math.abs(label.bottom - b.bottom) < 6, broken: [...root.querySelectorAll('.gear .slot span i')].filter(i => i.getClientRects().length > 1).map(i => i.textContent), numbers: [...root.querySelectorAll('.gear h3 i')].map(i => i.textContent) };
+      });
+      assert.ok(gear.weightH < 30 && gear.sameRow, `${size}: 携行重量折行 ${JSON.stringify(gear)}`);
+      assert.deepEqual([gear.broken, gear.numbers], [[], ['01', '02', '03', '04']], `${size}: 武器行或小节编号`);
+      await shot(`H19-gear-${size.join('x')}`);
+      rows.push({ size, quickOffset: quick, tabs, gear });
+    }
+    return rows;
+  });
+  await step('H20 两档桌面：七个页签同一个框，格子随屏幕放大，面板文字不小于 12px、像素字只用 16/32px', async () => {
+    const rows = [];
+    for (const size of [[1280, 720], [1920, 1080]]) {
+      await open({ fixture: preset('repaired'), size });
+      const frames = {}, cells = {};
+      for (const [key, kind] of [['1', 'gear'], ['2', 'arms'], ['3', 'med'], ['4', 'radio'], ['5', 'facility'], ['6', 'body'], ['7', 'deploy']]) {
+        await page.keyboard.press(key); await until(k => window.__station.host.ui.kind === k, 3000, kind, kind); await page.waitForTimeout(250);
+        const r = await page.evaluate(() => {
+          const root = document.querySelector('#station-yard').shadowRoot, p = root.querySelector('.panel'), b = p.getBoundingClientRect(), t = p.querySelector('.ptabs').getBoundingClientRect();
+          // Item names and counts inside grid cells scale with the cell (station.css .item .lbl) and are left out here.
+          const text = [...p.querySelectorAll('*')].filter(n => !n.closest('.item') && n.getBoundingClientRect().width && [...n.childNodes].some(c => c.nodeType === 3 && c.textContent.trim()));
+          const off = text.map(n => { const cs = getComputedStyle(n); return { face: cs.fontFamily.split(',')[0].replace(/["']/g, ''), size: parseFloat(cs.fontSize), text: n.textContent.trim().slice(0, 12) }; })
+            .filter(x => x.size < 11.95 || (x.face === 'Bincov Text' && x.size !== 16 && x.size !== 32));
+          return { frame: [b.left, b.top, b.width, b.height, t.top].map(Math.round).join(','), cell: Number(p.querySelector('[data-grid]')?.dataset.cell ?? 0), off };
+        });
+        frames[kind] = r.frame; cells[kind] = r.cell;
+        assert.deepEqual(r.off, [], `${size} ${kind}: 文字小于 12px，或像素字不在 16/32px`);
+      }
+      assert.equal(new Set(Object.values(frames)).size, 1, `${size}: 框或页签栏随页签变化 ${JSON.stringify(frames)}`);
+      // 1280×720 keeps main's cells (36 px: height-bound, and a shop with its keeper's line shrinks one step, as on main);
+      // 1080p grows them past the old 56 px cap.
+      for (const k of ['gear', 'arms', 'med']) assert.ok(cells[k] >= (size[0] === 1920 ? 64 : 36), `${size} ${k}: 格子 ${cells[k]}px`);
+      await page.keyboard.press('3'); await until(() => window.__station.host.ui.kind === 'med', 3000, 'med'); await page.waitForTimeout(200);
+      await shot(`H20-med-${size.join('x')}`);
+      rows.push({ size, frame: frames.gear, cells });
+    }
+    return rows;
   });
   await step('H17 390x844 快捷菜单中心点击必须命中整备与修理铺',async()=>{
     report.coverage.mobileMenuHit=[];

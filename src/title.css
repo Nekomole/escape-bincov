@@ -3,26 +3,26 @@ body[data-screen="menu"] #frame {
   width: 100%; height: 100%; height: 100dvh; transform: none !important;
   box-shadow: none;
 }
-body[data-screen="menu"] #game { inset: 0; width: 100%; height: 100%; transform: none; overflow: hidden; cursor: default; touch-action: auto; background: #0d181d; }
+body[data-screen="menu"] #game { inset: 0; width: 100%; height: 100%; transform: none; overflow: hidden; cursor: default; touch-action: auto; background: rgb(var(--ui-n2)); }
 /* Proportional nearest-neighbour cover: never stretched per axis; crop chosen per layout. */
 body[data-screen="menu"] #game canvas { width: 100% !important; height: 100% !important; object-fit: cover; object-position: 50% 45%; image-rendering: pixelated; }
 
 /* All menu text: Bincov Text at its native 16 px or an integer multiple. */
 .title-screen {
-  --t-text: #ece3bf; --t-dim: #b3b9a3; --t-faint: #8a978c; --t-brass: #c09a55; --t-brass-hi: #f0cf83; --t-ink: #0d181d;
+  --t-text: rgb(var(--ui-n14)); --t-dim: rgb(var(--ui-n12)); --t-faint: rgb(var(--ui-n10)); --t-brass: rgb(var(--ui-a)); --t-brass-hi: rgb(var(--ui-a-hi)); --t-ink: rgb(var(--ui-n2));
   position: absolute; inset: 0; isolation: isolate; overflow: auto;
   display: flex; flex-direction: column; pointer-events: auto;
   padding: max(28px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(5.5vw, 24px, env(safe-area-inset-left));
   color: var(--t-text); font: 16px/24px var(--pixel); letter-spacing: 0; font-synthesis: none;
-  scrollbar-width: thin; scrollbar-color: #5b7577 #0d181d;
+  scrollbar-width: thin; scrollbar-color: rgb(var(--ui-n9)) rgb(var(--ui-n2));
 }
 .title-screen * { font-family: var(--pixel); font-weight: 400; }
 /* A quiet dark side for the menu; the art itself carries every hard pixel edge. */
 .title-shade {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    linear-gradient(90deg, #0a141b38 0%, #0a141b29 18%, #0a141b1a 30%, transparent 44%),
-    linear-gradient(0deg, #0a141b66 0%, #0a141b33 7%, transparent 14%);
+    linear-gradient(90deg, rgb(var(--ui-n1) / .22) 0%, rgb(var(--ui-n1) / .16) 18%, rgb(var(--ui-n1) / .1) 30%, transparent 44%),
+    linear-gradient(0deg, rgb(var(--ui-n1) / .4) 0%, rgb(var(--ui-n1) / .2) 7%, transparent 14%);
 }
 .title-masthead { display: flex; align-items: center; gap: 8px; min-height: 44px; flex-shrink: 0; color: var(--t-dim); }
 .title-masthead span:nth-child(2) { color: var(--t-faint); }
@@ -42,21 +42,21 @@ html[data-title-art="fallback"] .title-mark-text { position: static; width: auto
   border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--t-text);
   font-size: 32px; line-height: 40px; text-align: left; transition: none;
 }
-.title-screen .title-enter { border-bottom-color: #c09a55cc; padding-bottom: 12px; }
+.title-screen .title-enter { border-bottom-color: rgb(var(--ui-a) / .8); padding-bottom: 12px; }
 .title-screen .title-option { color: var(--t-dim); }
 /* A single hard pixel of ink adds weight without a second face or blurred shadow. */
 .title-label { text-shadow: 1px 0 currentColor; }
 .title-marker { width: 10px; height: 20px; background: transparent; }
-.title-enter .title-marker { background: #d7ae61; }
+.title-enter .title-marker { background: rgb(var(--ui-a)); }
 .title-enter small { grid-column: 2; margin-top: 4px; font-size: 16px; line-height: 24px; color: var(--t-dim); }
-.title-screen .title-enter:hover:not(:disabled), .title-screen .title-option:hover:not(:disabled) { background: transparent; color: #fff5d6; }
+.title-screen .title-enter:hover:not(:disabled), .title-screen .title-option:hover:not(:disabled) { background: transparent; color: rgb(var(--ui-n15)); }
 .title-screen .title-enter:hover .title-marker, .title-screen .title-enter:focus-visible .title-marker { background: var(--t-brass-hi); }
 .title-screen .title-option:hover .title-marker, .title-screen .title-option:focus-visible .title-marker { background: var(--t-dim); }
 .title-screen .title-enter:hover:not(:disabled) { border-bottom-color: var(--t-brass-hi); }
-.title-screen .title-enter:active:not(:disabled), .title-screen .title-option:active:not(:disabled) { background: #0d181d66; }
+.title-screen .title-enter:active:not(:disabled), .title-screen .title-option:active:not(:disabled) { background: rgb(var(--ui-n2) / .4); }
 .title-screen button:focus-visible, .title-screen a:focus-visible { outline: 2px solid var(--t-brass-hi); outline-offset: 4px; }
-.title-storage-note { margin: 8px 0 0; padding: 8px 12px; border-left: 2px solid #e28a6c; background: #221211cc; color: #f0c8a8; }
-.title-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; flex-shrink: 0; gap: 8px 32px; min-height: 56px; padding-top: 8px; border-top: 2px solid #c09a5533; }
+.title-storage-note { margin: 8px 0 0; padding: 8px 12px; border-left: 2px solid rgb(var(--ui-b)); background: rgb(var(--ui-n2) / .8); color: rgb(var(--ui-b-hi)); }
+.title-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; flex-shrink: 0; gap: 8px 32px; min-height: 56px; padding-top: 8px; border-top: 2px solid rgb(var(--ui-a) / .2); }
 .title-settings { display: flex; align-items: center; gap: 24px; }
 .title-screen .title-link {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; min-width: 44px; padding: 0 4px;
@@ -75,7 +75,7 @@ body[data-screen="menu"] .modal { width: 640px; max-width: 100%; max-height: 100
 body[data-screen="menu"] .modal *, body[data-screen="menu"] .help-grid kbd { font-family: var(--pixel); font-weight: 400; }
 body[data-screen="menu"] .modal > button { min-height: 44px; min-width: 100px; }
 body[data-screen="menu"] .help-grid { font-size: 16px; }
-body[data-screen="menu"] .modal:focus-within { border-top-color: #c09a55; }
+body[data-screen="menu"] .modal:focus-within { border-top-color: rgb(var(--ui-a)); }
 
 /* Large desktops: the wordmark steps up one whole pixel scale. */
 @media (min-width: 1800px) and (min-height: 1000px) {
@@ -93,7 +93,7 @@ body[data-screen="menu"] .modal:focus-within { border-top-color: #c09a55; }
 @media (max-width: 600px) {
   body[data-screen="menu"] #game canvas { object-position: 72% 50%; }
   .title-screen { padding: max(20px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
-  .title-shade { background: linear-gradient(180deg, #0a141ba6 0%, #0a141b33 9%, transparent 22% 40%, #0a141bcc 56%, #0a141bf2 66%); }
+  .title-shade { background: linear-gradient(180deg, rgb(var(--ui-n1) / .65) 0%, rgb(var(--ui-n1) / .2) 9%, transparent 22% 40%, rgb(var(--ui-n1) / .8) 56%, rgb(var(--ui-n1) / .95) 66%); }
   .title-layout { justify-content: flex-end; padding: 16px 0 24px; }
   .title-english { letter-spacing: 6px; }
   .title-menu { width: 100%; }
@@ -112,13 +112,13 @@ body[data-screen="menu"] .modal:focus-within { border-top-color: #c09a55; }
    pillar, lamp, window and radio; the menu sits below it on the room's shadow. */
 @media (max-width: 600px) and (max-aspect-ratio: 3/4) {
   body[data-screen="menu"] #game canvas { position: absolute; top: -24px; left: calc(50% - 664px); width: 960px !important; height: 540px !important; object-fit: fill; }
-  .title-shade { background: linear-gradient(180deg, #0a141ba6 0, #0a141b26 64px, transparent 140px 290px, #0d181dcc 370px, #0d181d 450px); }
+  .title-shade { background: linear-gradient(180deg, rgb(var(--ui-n1) / .65) 0, rgb(var(--ui-n1) / .15) 64px, transparent 140px 290px, rgb(var(--ui-n2) / .8) 370px, rgb(var(--ui-n2)) 450px); }
 }
 /* Short landscape and browser zoom: the wordmark drops to 1× and the layout scrolls if needed. */
 @media (max-height: 600px) and (min-width: 601px) {
   .title-screen { padding-top: max(16px, env(safe-area-inset-top)); padding-bottom: max(8px, env(safe-area-inset-bottom)); }
   /* On cropped landscape screens the footer crosses the lit map; keep its text legible. */
-  .title-shade { background: linear-gradient(0deg, #0a141be6 0, #0a141bc2 48px, transparent 92px), linear-gradient(90deg, #0a141b38 0%, #0a141b29 18%, #0a141b1a 30%, transparent 44%); }
+  .title-shade { background: linear-gradient(0deg, rgb(var(--ui-n1) / .9) 0, rgb(var(--ui-n1) / .76) 48px, transparent 92px), linear-gradient(90deg, rgb(var(--ui-n1) / .22) 0%, rgb(var(--ui-n1) / .16) 18%, rgb(var(--ui-n1) / .1) 30%, transparent 44%); }
   .title-masthead { min-height: 32px; }
   .title-layout { padding: 8px 0 12px; }
   .title-mark-art { width: 144px; height: 72px; }

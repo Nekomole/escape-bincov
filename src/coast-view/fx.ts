@@ -1,6 +1,7 @@
 import { Container, Sprite } from 'pixi.js';
 import type { Textures } from './textures';
 import { canvas, hash } from './art/paint';
+import { paintScorch } from './art/fire';
 import { PARTICLE_BUDGET, admit } from '../feedback-budget';
 
 interface Particle { region: readonly string[]; s: Sprite; x: number; y: number; h: number; vx: number; vy: number; vh: number; age: number; ttl: number; g: number; settle: 'decal' | 'fade' | 'stay'; color: number; decor: boolean }
@@ -103,6 +104,14 @@ export class Fx {
     if (grow) this.pools.push({ s, age: 0 });
   }
   private pools: { s: Sprite; age: number }[] = [];
+
+  /** A dragon's breath burst's soot on the ground (special-rounds.ts): a decal like the pools, four variants by `seed`. */
+  scorch(x: number, y: number, seed: number) {
+    const s = new Sprite(this.tex.ensure(`fx:scorch:${seed % 4}`, () => paintScorch(seed % 4)));
+    s.anchor.set(.5); s.position.set(Math.round(x), Math.round(y));
+    this.flat.addChild(s); this.decals.push({ s, region: this.regionAt(x, y) });
+    if (this.decals.length > 400) this.decals.shift()!.s.destroy();
+  }
 
   decal(x: number, y: number, color: number, size = 1, owner: readonly string[] = []) {
     const s = new Sprite(this.tex.pixel()); s.tint = color; s.scale.set(size); s.position.set(Math.round(x), Math.round(y));

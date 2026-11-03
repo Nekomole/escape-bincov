@@ -1,7 +1,9 @@
 import * as D from '../domain';
-import type { Attribute, Facility, HideoutRuntime, HideoutSnapshot, Merchant, Recipe, Result, RunWorld, ShopSession, ShopSource, Source } from '../hideout-runtime/contract';
+import type { Attribute, Facility, HideoutRuntime, HideoutSnapshot, Merchant, Recipe, Result, RunWorld, ShopSession, ShopSource, Source, StoryConversation } from '../hideout-runtime/contract';
+import { STORY_ENTRIES, type StoryEntry } from '../story-dialogue';
 import type { Scope } from '../view-lifecycle/scope';
 import { CATALOG_W, firstShopCell, questUses } from '../shop';
+import { questMarks } from '../qol';
 import { STATIONS, type Station, type StationId } from './layout';
 import { GridDrag, type DragHooks } from './grid';
 import { esc } from '../html';
@@ -48,6 +50,16 @@ const CENTER: PanelKind[] = ['report', 'menu', 'help', 'gunsmith'];
  * SHOP_SIDE_MIN px (its tabs and catalog filter).
  */
 const GEAR_COLS = 6 + D.STASH_W, SHOP_COLS = CATALOG_W + D.STASH_W, SHOP_PAD = 110, SHOP_SIDE_MIN = 252;
+/**
+ * The desktop frame every panel shares (#163 batch 2, maintainer's pick: one centred box, the departure terminal's): the
+ * same size and place on every tab, so switching tabs never moves it. Matches .panel in station.css (inset 12px, 5vh 5vw
+ * on large windows); the grids are sized to it. Cells grow with the screen up to CELL_MAX.
+ */
+function frameBox(): { w: number; h: number } {
+  const big = innerWidth >= 1500 && innerHeight >= 850;
+  return { w: big ? innerWidth * .9 : innerWidth - 24, h: big ? innerHeight * .9 : innerHeight - 24 };
+}
+const CELL_MAX = 88;
 const shopWidth = (cell: number) => Math.max(CATALOG_W * cell + 2, SHOP_SIDE_MIN) + D.STASH_W * cell + SHOP_PAD;
 /**
  * The old hideout tabs kept as shortcuts (decision 06-2): open any of them from anywhere with the same session the
@@ -99,6 +111,19 @@ export class UI {
   private perkAttr: Attribute | null = null;
   /** A perk change whose write failed and waits for the retry (its name for the storage dialog), or ''. */
   private perkPending = '';
+  /** The radio panel's view; a new opening of the panel starts on the task cards. */
+  private radioTab: P.RadioTab = 'tasks';
+  /**
+   * The open conversation with 小蔡 (HideoutRuntime.openStory) and the topic it was opened on. Only a cursor: a reply
+   * advances after its choice is saved, and closing it (panel closed, view left, Esc) saves and chooses nothing.
+   */
+  private talk: StoryConversation | null = null;
+  private talkEntry: StoryEntry | null = null;
+  private talkTitle = '';
+  /** The last choice's failure, shown in the box's reserved line until the next choice or topic. */
+  private talkError = '';
+  /** A conversation kept over the power sequence: its reply to the delivery shows once the lamps are on (resumeTalk). */
+  private heldTalk: { talk: StoryConversation; entry: StoryEntry; title: string } | null = null;
   summary: D.RunSummary | null = null;
   private drag: GridDrag;
   private lastSnapshotRev = -1;
@@ -147,6 +172,7 @@ export class UI {
     if (this.kind === 'gunsmith' && kind !== 'gunsmith' && this.bench && !this.bench.requestClose()) { this.render(); return; }
     if (kind !== 'gunsmith') { this.bench?.dispose(); this.bench = null; this.benchFrom = null; }
     const was = this.kind;
+    if (kind !== 'radio' || was !== 'radio') { this.dropTalk(); this.radioTab = 'tasks'; }
     // The panel is painted anew: a drag from the old grids ends here instead of waiting for a release.
     this.drag.cancel();
     this.kind = kind; this.station = station; this.selected = null;
@@ -166,7 +192,7 @@ export class UI {
       this.closeBench(); return;
     }
     if ((this.kind === 'arms' || this.kind === 'med') && this.shop?.view().dirty) { this.toast('待买或待卖区还有物品，先结算或清空。', 'error'); this.host.sound('error'); return; }
-    this.drag.cancel();
+    this.drag.cancel(); this.dropTalk();
     this.kind = null; this.station = null; this.shop = null; this.selected = null;
     this.panel.hidden = true; this.modal.hidden = true; this.panel.innerHTML = ''; this.modal.innerHTML = '';
     this.root.classList.remove('has-panel', 'has-modal');
@@ -198,14 +224,69 @@ export class UI {
   }
   /** Leave with a dirty cart allowed (the cart is only a list; nothing was paid). */
   discard() { this.shop?.reset(); this.dialog = null; this.dialogEl.hidden = true; this.close(); }
-  /** CSS px of the right side covered by the docked panel (the camera keeps the station in view). */
-  get inset() { return this.kind && !CENTER.includes(this.kind) && !this.panel.hidden && !this.compact ? this.panel.getBoundingClientRect().width + 24 : 0; }
+
+  // ---------- 小蔡 (#83) ----------
+  /** Release the conversation cursor; an unanswered question stays unanswered. */
+  private dropTalk() { this.talk?.close(); this.talk = null; this.talkEntry = null; this.talkTitle = ''; this.talkError = ''; }
+  private openTalk(entry: StoryEntry) {
+    this.dropTalk();
+    const talk = STORY_ENTRIES.includes(entry) ? this.rt.openStory(entry) : null;
+    this.radioTab = 'talk';
+    if (!talk) { this.toast('现在没法和小蔡说这个。', 'error'); this.host.sound('error'); this.render(); return; }
+    this.talk = talk; this.talkEntry = entry; this.talkTitle = P.topicLabel(entry, this.rt.story()); this.host.sound('pick'); this.render();
+  }
+  /**
+   * One option. The next reply shows only after its write succeeded; a failed write keeps the same topic and options
+   * (the storage dialog explains it), and after 重试保存 the player presses the same option again.
+   */
+  private say(option: string) {
+    const talk = this.talk; if (!talk) return;
+    const r = talk.choose(option);
+    // A delivery restores power: the yard closed the panel for the lamp sequence and holds this conversation.
+    if (this.heldTalk?.talk === talk) return;
+    if (!r.ok) {
+      this.talkError = r.reason === 'stale' ? '情况已经变了，请重新选话题。' : `没有记下：${r.message}`;
+      this.host.sound('error');
+      if (r.reason === 'storage' || r.reason === 'conflict') this.showStorage();
+      this.render(); return;
+    }
+    this.talkError = '';
+    const next = talk.view();
+    if (!next) { this.dropTalk(); this.host.sound('close'); } else this.host.sound(next.id === 'ch01-dlg-submit' ? 'deliver' : 'pick');
+    this.render();
+  }
+  /**
+   * The window lost focus or the page was hidden (switching windows, apps or tabs): end the conversation without
+   * answering, including one held over the power sequence. The talk page keeps its box and shows the topic list again,
+   * so a key pressed on returning cannot land on an answer that was on screen.
+   */
+  releaseTalk() {
+    const held = this.heldTalk; this.heldTalk = null; held?.talk.close();
+    if (!this.talk) return;
+    this.dropTalk();
+    if (this.kind === 'radio') this.render();
+  }
+  /** The yard is about to close the panel for the power sequence: keep the conversation for resumeTalk. */
+  holdTalk() {
+    if (this.talk && this.talkEntry) this.heldTalk = { talk: this.talk, entry: this.talkEntry, title: this.talkTitle };
+    this.talk = null; this.talkEntry = null; this.talkTitle = ''; this.talkError = '';
+  }
+  /** After the power sequence: back at the radio with 小蔡's reply to the delivery, if nothing else was opened meanwhile. */
+  resumeTalk() {
+    const held = this.heldTalk; this.heldTalk = null;
+    if (!held) return;
+    if (this.open || !held.talk.view()) { held.talk.close(); return; }
+    this.show('radio', STATIONS.find(s => s.id === 'radio') ?? null);
+    if (this.kind !== 'radio') { held.talk.close(); return; }
+    this.talk = held.talk; this.talkEntry = held.entry; this.talkTitle = held.title; this.radioTab = 'talk'; this.render();
+  }
 
   /** Phones and short windows get the paired-container layout. */
   get compact() { return innerWidth < 900 || innerHeight < 560; }
-  /** Grid cell (CSS px) that fits the panel's tallest column and a width that leaves the station in view. */
+  /** Grid cell (CSS px) that fits the panel's tallest column and the frame's width. */
   private cellFor(kind: PanelKind): number {
-    const s = this.rt.snapshot(), rows = D.stashShownRows(s.profile.stash), H = innerHeight, Wd = innerWidth;
+    // H: the frame's height plus the 24 px the old docked panel's formulas below leave for its margins.
+    const s = this.rt.snapshot(), rows = D.stashShownRows(s.profile.stash), box = frameBox(), H = box.h + 24, Wd = innerWidth;
     if (this.compact) {
       // Landscape: two containers side by side (16 columns for gear, 14 for shops); portrait: stacked, 10 columns wide.
       // Height fits the first container (5 rows); the second one scrolls when it is taller.
@@ -215,15 +296,18 @@ export class UI {
     }
     if (kind === 'gear') {
       // Left: slot, three headings and the weight meter (~224 px) around bag (5 rows) and safe (2 rows); right: stash, upgrade and details (~180 px).
-      const byH = Math.min((H - 164 - 326) / 7, (H - 164 - 254) / rows), byW = (Math.min(Wd - 24, Wd * .74) - 70) / GEAR_COLS;
+      const byH = Math.min((H - 164 - 326) / 7, (H - 164 - 254) / rows), byW = (box.w - 70) / GEAR_COLS;
       // Below 36 px, three-character labels such as 保险管 no longer fit after the new gear actions.
       // Keep labels readable and allow the existing vertical scroll on exceptionally short desktop panels.
-      return Math.max(36, Math.min(56, Math.floor(Math.min(byH, byW))));
+      return Math.max(36, Math.min(CELL_MAX, Math.floor(Math.min(byH, byW))));
     }
     // The merchant side is 8 rows (goods 5, buy list 3) under the tabs and the filter; the stash and the money beside it.
-    const byH = Math.min((H - 416) / 8, (H - 380) / rows), byW = (Math.min(Wd - 24, Wd * .76) - SHOP_PAD) / SHOP_COLS;
+    const byH = Math.min((H - 416) / 8, (H - 380) / rows), byW = (box.w - SHOP_PAD) / SHOP_COLS;
     // Not below 36 px either (three-character labels); a stash taller than that leaves scrolls in its box (fitStash).
-    return Math.max(36, Math.min(56, Math.floor(Math.min(byH, byW))));
+    // The merchant side's minimum width (its tabs) can still decide at small cells.
+    let c = Math.max(36, Math.min(CELL_MAX, Math.floor(Math.min(byH, byW))));
+    while (c > 36 && shopWidth(c) > box.w) c--;
+    return c;
   }
 
   render() {
@@ -278,9 +362,17 @@ export class UI {
         const v = this.shop!.view(); const item = this.selected ? (v[this.selected.src === 'merchant' ? 'catalog' : this.selected.src as 'buy' | 'sell' | 'stash'].items.find(i => i.uid === this.selected!.uid) ?? null) : null;
         // Sellable stacks still in the bag or safe: this shop sells from the stash only, so its header says so.
         const outside = [s.profile.bag, s.profile.safe].reduce((n, inv) => n + inv.items.filter(i => !i.relief && (D.ITEMS[i.id]?.sell ?? 0) > 0).length, 0);
-        body = this.compact ? P.shopCompactHtml(v, cell, this.selected, s.profile.cash, this.shopMode, outside) : P.shopHtml(v, cell, sel, s.profile.cash, this.shopMode, outside) + P.detailsHtml(item, this.selected?.src ?? null, 'shop', item ? questUses(s.profile, item.id) : [], s.profile); break;
+        body = this.compact ? P.shopCompactHtml(v, cell, this.selected, s.profile.cash, this.shopMode, outside, questMarks(s.profile, null)) : P.shopHtml(v, cell, sel, s.profile.cash, this.shopMode, outside, questMarks(s.profile, null)) + P.detailsHtml(item, this.selected?.src ?? null, 'shop', item ? questUses(s.profile, item.id) : [], s.profile); break;
       }
-      case 'radio': body = P.questsHtml(s); break;
+      case 'radio': {
+        const board = this.rt.story();
+        // A conversation the Runtime no longer serves (a conflict, an import that changed the facts) is closed here.
+        const reply = this.talk?.view() ?? null;
+        if (this.talk && !reply) this.dropTalk();
+        body = this.radioTab === 'talk' ? P.talkHtml(board, reply, this.talkEntry, this.talkTitle, this.talkError)
+          : this.radioTab === 'recall' ? P.recallHtml(board) : P.questsHtml(s, P.talkEntryHtml(board));
+        break;
+      }
       case 'generator': body = P.generatorHtml(s); break;
       case 'deploy': body = P.deployHtml(s, this.rt.departure(), this.world, this.seed, this.worlds, this.regionPreview, this.countyArt, innerWidth < 600); break;
       case 'facility': body = (this.facility === 'workbench' ? P.benchEntryHtml() : '') + `<nav class="seg facs">${FACILITY_ORDER.map(f => P.btn(`${FACILITY_LABEL[f]}${s.base.facilities[f] ? ` <small>${s.base.facilities[f]} 级</small>` : ''}`, `fac:${f}`, f === this.facility ? 'on' : '')).join('')}</nav>` + P.facilityHtml(this.rt.facility(this.facility), s, this.rt.trainingProgress()); break;
@@ -294,7 +386,6 @@ export class UI {
     }
     const scroll = el.querySelector('.pbody')?.scrollTop ?? 0;
     el.className = `${center ? 'modal' : 'panel'} k-${kind}${WIDE.includes(kind) ? ' wide' : ''}${this.compact ? ' compact' : ''}${innerHeight > innerWidth ? ' portrait' : ''}`;
-    el.style.width = WIDE.includes(kind) && !this.compact ? `${Math.min(innerWidth - 24, (kind === 'gear' ? GEAR_COLS * cell + 70 : shopWidth(cell)))}px` : '';
     const cash = ['gear', 'arms', 'med', 'facility', 'deploy', 'radio', 'generator', 'gunsmith'].includes(kind) ? `<span class="pcash">现金 <b>¥ ${s.profile.cash.toLocaleString()}</b></span>` : '';
     const tabbed = SHORTCUTS.some(q => q.kind === kind) || kind === 'generator';
     const tabs = tabbed ? `<nav class="ptabs" aria-label="水产站功能">${SHORTCUTS.map(q => `<button data-tab="${q.kind}" class="${q.kind === kind ? 'on' : ''}" ${q.kind === kind ? 'aria-current="page"' : ''}>${q.label}<kbd>${q.key}</kbd></button>`).join('')}</nav>` : '';
@@ -582,6 +673,9 @@ export class UI {
       case 'cart-settle': this.settle(); break;
       case 'sale-confirm': if (this.dialog?.kind === 'sale') this.settle(this.dialog.token); break;
       case 'quest': this.result(this.rt.submitQuest(a1), 'deliver'); this.render(); break;
+      case 'radio-tab': if (a1 !== this.radioTab) { if (a1 !== 'talk') this.dropTalk(); this.radioTab = a1 as P.RadioTab; this.host.sound('pick'); this.render(); } break;
+      case 'talk': this.openTalk(a1 as StoryEntry); break;
+      case 'say': this.say(a1); break;
       case 'build': this.result(this.rt.build(a1 as Facility), 'build'); this.render(); break;
       case 'enqueue': this.result(this.rt.enqueue(a1 as Recipe)); this.render(); break;
       case 'premium': this.result(this.rt.craftPremium(a1), 'build'); this.render(); break;

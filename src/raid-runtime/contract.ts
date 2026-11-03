@@ -4,6 +4,12 @@ import type { GunClass } from '../gunsmith/catalog';
 import type { LootTransfer } from '../loot';
 import type { CritBreakdown } from '../perks';
 import type { MutationResult } from '../session';
+import type { RoundKind, TracerColor } from '../special-rounds';
+
+export type { RoundKind, TracerColor };
+import type { storyView, StoryClue } from '../story';
+export interface StorySourceRef { world: WorldKey; id: 'ch01-sc-freezer' | 'ch01-sc-breaker' }
+export interface StorySource { ref: StorySourceRef; at: Point; radius: number; title: string; available: boolean }
 
 export type CarriedEndpoint = 'bag' | 'safe';
 /** Detached display inputs, read afresh after a transaction; never a second inventory owner. */
@@ -16,6 +22,9 @@ export type CarriedPlacement = Readonly<{
 /** Durable actions and detached reads offered to a raid view. Implemented by raid-runtime/host, never by a view.
  * Read again after any transaction: rollback/restore may replace loadout and world objects. */
 export interface CoastServices {
+    story(): ReturnType<typeof storyView>;
+    storySources(): StorySource[];
+    observeStory(ref: StorySourceRef): boolean;
     cancelStart(): void;
     activate(ref: TargetRef): boolean;
     transferLoot(ref: TargetRef, request: LootTransfer): MutationResult;
@@ -187,6 +196,8 @@ export type ActorView = Readonly<{
         angle: number;
         containerId: string | null;
     }> | null;
+    /** Seconds this body still burns (a dragon's breath round set it alight, special-rounds.ts); absent when not burning. */
+    burning?: number;
 }>;
 export type BulletView = Readonly<{
     uid: string;
@@ -196,7 +207,13 @@ export type BulletView = Readonly<{
     vy: number;
     enemy: boolean;
     owner: string | null;
+    /** A special round (special-rounds.ts): a tracer or a dragon's breath pellet; absent for an ordinary round. */
+    round?: RoundKind;
+    /** A tracer's colour; present exactly when `round` is 'tracer'. */
+    color?: TracerColor;
 }>;
+/** A patch of burning ground a dragon's breath burst left: centre, reach and seconds left of its total. */
+export type FireView = Readonly<{ id: number; x: number; y: number; r: number; left: number; total: number }>;
 export type GroundLootView = Readonly<{
     uid: string;
     item: string;
@@ -351,7 +368,8 @@ export type HudView = Readonly<{
         left: number;
     }>[];
 }>;
-export type HurtCause = 'blow' | 'bleed' | 'pollution' | 'dehydration' | 'starvation' | 'limit-change';
+/** `fire`: a dragon's breath burst or burning (special-rounds.ts), on enemies only. */
+export type HurtCause = 'blow' | 'bleed' | 'pollution' | 'dehydration' | 'starvation' | 'limit-change' | 'fire';
 export type ViewFrame = Readonly<{
     player: ActorView;
     actors: readonly ActorView[];
@@ -366,6 +384,8 @@ export type ViewFrame = Readonly<{
     interaction: Interaction | null;
     hud: HudView;
     phase: 'running' | 'paused' | 'blocked' | 'ending';
+    /** Burning ground on this map (dragon's breath, special-rounds.ts); absent while nothing burns. */
+    fires?: readonly FireView[];
 }>;
 export type Durability = 'accepted' | 'committed';
 export type PelletView = Readonly<{
@@ -388,6 +408,10 @@ export type ViewEventBody = {
     gun?: Readonly<{ id: string; cls: GunClass }>;
     /** A suppressor muffles this shot (#28 M2-11): the view plays the quiet recipe. Present with `gun`. */
     suppressed?: boolean;
+    /** Every pellet of this shot is this special round (special-rounds.ts); absent for ordinary rounds. */
+    round?: RoundKind;
+    /** The tracers' colour; present exactly when `round` is 'tracer'. */
+    color?: TracerColor;
 } | {
     type: 'melee';
     attacker: string;
@@ -428,6 +452,15 @@ export type ViewEventBody = {
     corpseAngle: number;
     containerId: string | null;
 } | {
+    /**
+     * A dragon's breath pellet burst into a fireball at `at` (special-rounds.ts DRAGON): it reached `radius` and left a
+     * ground fire that burns `fire` seconds (published in ViewFrame.fires). The pellets of one shot often burst together.
+     */
+    type: 'blast';
+    at: Point;
+    radius: number;
+    fire: number;
+} | {
     type: 'door';
     id: string;
     open: boolean;
@@ -455,6 +488,13 @@ export type ViewEventBody = {
      * Door refusals distinguish 'unreachable' from 'occupied'; no success side effects survive rejection.
      */
     reason: string;
+} | {
+    type: 'story-cue';
+    source: string;
+    clue: StoryClue;
+    text: string;
+    /** A presentation hint only. Text and recap contain the whole information even with audio disabled. */
+    sound: 'knocks' | 'call' | null;
 } | {
     type: 'notice';
     text: string;
