@@ -1,14 +1,18 @@
 import { Application, Container, Graphics, RenderTexture, Sprite, Texture } from 'pixi.js';
-import { worldKeyString, type ActorKind, type ActorView, type MapDef, type Point, type PublishedView, type Rect, type StampedEvent, type ViewFrame } from '../raid-runtime/contract';
+import { worldKeyString, type ActorKind, type ActorView, type MapDef, type Point, type PublishedView, type Rect, type RoundKind, type StampedEvent, type TracerColor, type ViewFrame } from '../raid-runtime/contract';
 import { hasRoof, isRuined, materials, regionLamps, storeys, type GroundMaterial } from './appearance';
 import { SAMPLE_AREA } from '../sample-area';
 import { paintGround, puddles, type GroundBake } from './art/ground';
 import { canvas, silhouette } from './art/paint';
 import { groundGeometry } from './art/surface';
 import { LOOT_FOOT, LOOT_H } from './art/props';
+import { BREAKER_FOOT, CABINET_FOOT, FREEZER_FOOT, paintBreaker, paintFreezer, paintToolCabinet } from './art/market';
+import { STORY_CABINET, STORY_WORLD } from '../story';
+import { MARKET_ANCHORS } from '../market-world';
 import { solWall, type SolArt } from './art/sol';
 import { LOW_H, ROOF_MARGIN, STOREY_H, WALL_H, paintCanopy, paintCeiling, paintDoorGuide, paintDownpipe, paintDoorFoot, paintLintel, paintLow, paintOpeningGuide, paintPassageGuide, paintRoof, paintStairLabel, paintStairs, paintWall, paintWallAC, wallKey, type WallSpec } from './art/structures';
 import { Fx } from './fx';
+import { FireFx, tracerPalette } from './fire-fx';
 import { gait, walkFrame } from '../gait';
 import { Lighting, MOODS, lamp, type Light } from './lighting';
 import { Textures } from './textures';
@@ -17,7 +21,7 @@ import { BLOW_TIERS, REDUCED_KICK, ShotBlows, bloodDrops, blowTier, pushCamera, 
 import { lifecycle } from '../view-lifecycle/scope';
 import { Weather, type RoofArea, type WeatherKind } from './weather';
 import { Tide, paintWade } from './tide';
-import { isMall, knownDoor, knownStructurePoint, occupiedStructure, regionAtClosed, shownAt } from './structure-guide';
+import { isMall, knownDoor, knownStructurePoint, occupiedStructure, regionAtClosed, shownAt, stairLabelPlace, type LabelSide } from './structure-guide';
 import { paintMallGround } from './art/mall-ground';
 import { clearanceCuts, clearances, doorClearances, indoorArea, rowModes, sinkStep, sunkRows, topClear, underRule, wallCell, wallRule, type WallMode, type WallRule } from './wall-display';
 import { buildMall, mallDress, mallDressMap, type Link, type MallDress, type OccluderKind } from './mall-scene';
@@ -107,6 +111,8 @@ interface ActorGfx {
 
 const intersects = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const grow = (r: Rect, p: number): Rect => ({ x: r.x - p, y: r.y - p, w: r.w + p * 2, h: r.h + p * 2 });
+/** The 32x40 stairs picture on an entry's cell (paintStairs), drawn 8 px up into the cell above. */
+const stairArt = (e: { at: Point }): Rect => ({ x: Math.floor(e.at.x / 32) * 32, y: Math.floor(e.at.y / 32) * 32 - 8, w: 32, h: 40 });
 const corpseFacing = (a: ActorView): 1 | -1 => Math.cos((a.corpse?.angle ?? a.aim) + Math.PI) >= 0 ? 1 : -1;
 const dirOf = (a: number) => ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8;
 
@@ -157,6 +163,10 @@ export class CoastView {
   private upHolder = new Container(); private upSprite = new Sprite();
   readonly screen = new Sprite();
   private fx: Fx;
+  /** Bursts, ground fires, burning bodies and tracer stars of the special rounds (special-rounds.ts). */
+  private fireFx: FireFx;
+  /** Special rounds by bullet uid, from their shot events: an impact may come before the bullet is ever in a frame. */
+  private specials = new Map<string, { round: RoundKind; color?: TracerColor }>();
   readonly weather: Weather;
   readonly tide: Tide;
 
@@ -169,13 +179,22 @@ export class CoastView {
    * The door the interaction prompt is about (#26 F07): a glow over its leaf at the door's own depth, so actors in front
    * stay on top, and the way through it on the floor under the actors (showFacedDoor). Made when a door is first faced.
    */
-  private facedDoor: { glow: Sprite; way: Sprite } | null = null;
+  private facedDoor: { glow: Sprite; way: Sprite; lit: Rect | null } | null = null;
   private stairLabels = new Map<string, Sprite>();
+  /**
+   * World boxes of the HUD text the host draws, from its last frame: each stair label's measured size (its font does not
+   * scale with the scene) and the interaction prompt, which a stair label keeps clear of.
+   */
+  hudLabelSizes = new Map<string, { w: number; h: number }>();
+  promptBox: Rect | null = null;
+  /** Lit pixel bounds of each door glow picture, by texture key. */
+  private glowBounds = new Map<string, Rect>();
   private actors = new Map<string, ActorGfx>();
   /** `from`: the drawn muzzle (chest plane) the tracer starts at; `seen`: where the head was first shown (its tail never
    *  reaches back past it, so a tracer leaving a hidden room does not point into it). */
   private bullets = new Map<string, { g: Graphics; born: Point; vx: number; vy: number; from: Point | null; seen: Point | null; off: Point }>();
-  private crates = new Map<string, { s: Sprite; shadow: Sprite; empty: boolean; look: 'full' | 'empty' | 'open' }>();
+  /** Drawn crates (and the market's tool cabinet, #83) by container id, with the texture key of their current look. */
+  private crates = new Map<string, { s: Sprite; shadow: Sprite; empty: boolean; look: 'full' | 'empty' | 'open'; key: string }>();
   private loot = new Map<string, Sprite>();
   /** Muzzle flashes and knife swings; `t` is null until the frame that made one has been drawn (see present). */
   private muzzles: { s: Sprite; t: number | null; shooter?: string; weapon?: ActorView['weapon'] }[] = [];
@@ -191,6 +210,8 @@ export class CoastView {
   private rngState = 7;
   private time = 0;
   private destroyed = false;
+  /** What the special rounds' effects draw now (fire-fx.ts counts), for checks. */
+  get fireStats() { return this.fireFx.counts; }
 
   cam = { x: 0, y: 0 };
   /** Smoothed follow camera (without look-ahead); hx/hy are what snapAxis carries per axis and `lead` the look-ahead (both
@@ -210,6 +231,8 @@ export class CoastView {
   private blowGroups = new Map<string, { pellets: number; tier: BlowTier; angle: number | null; again: boolean; blown: boolean; bled: boolean }>();
   /** Crate whose loot panel is open (set by the host): drawn with its lid up. */
   openContainer: string | null = null;
+  /** The host's interaction names the market breaker (#83): it is outlined instead of the Runtime's own target. */
+  storyFocus = false;
   view = { w: 0, h: 0, s: 1, k: 1, dpr: 1, W: 0, H: 0 };
   last: ViewFrame | null = null;
   stats = { sprites: 0, occluders: 0, rebuilds: 0, frameMs: 0, droppedEvents: 0, events: 0, rebuildMs: 0 };
@@ -234,6 +257,7 @@ export class CoastView {
       this.lightHolder.addChild(this.lightOverlay);
       this.upHolder.addChild(this.upSprite);
       this.fx = new Fx(this.tex, this.sorted, this.flat, (x, y) => this.regionsAt({ x, y }));
+      this.fireFx = new FireFx(this.tex, this.sorted, this.flat, this.fx, this.light, () => this.rnd(), () => this.opts.reducedMotion);
       this.tex.warm(['player', 'scav', 'salt', 'creature', 'elite']);
       this.resize();
       CoastView.live.add(this);
@@ -323,6 +347,9 @@ export class CoastView {
       if (!current(e)) { this.stats.droppedEvents++; continue; }
       this.onEvent(e, f, blown);
     }
+    // A special round's record ends once its bullet is gone and its events have been shown.
+    if (this.specials.size) { const flying = new Set(f.bullets.map(b => b.uid)); for (const uid of this.specials.keys()) if (!flying.has(uid)) this.specials.delete(uid); }
+    this.fireFx.sync(f.fires, [f.player, ...f.actors], p => shownAt(this.map!, f.revealed, p), p => regionAtClosed(this.map!, f.revealed, p));
     // A scope (#28 M3-11): with the right button held, a flick across the screen drops the whole look-ahead in one frame,
     // so the camera can move further than the 96 px margin the culling below keeps around the last camera (walls at the
     // screen edge went undrawn for a frame from x1.5 up, M0-07). With a scope the camera is placed first and the baking
@@ -333,6 +360,8 @@ export class CoastView {
     this.bakeAhead(dt);
     this.fx.update(dt);
     this.fx.reveal(f.revealed);
+    this.fireFx.update(dt);
+    this.fireFx.reveal(p => shownAt(this.map!, f.revealed, p));
     // A flash or swing made by this batch's events is drawn once before it ages: below about 14 frames a second it used to
     // age past its life in the frame that made it and was never seen (PR #39, on CI's software renderer every time).
     for (let i = this.muzzles.length - 1; i >= 0; i--) {
@@ -379,9 +408,9 @@ export class CoastView {
 
   private clearScene() {
     for (const layer of [this.groundLayer, this.flat, this.shadows, this.sorted, this.xray, this.overhead]) for (const c of layer.removeChildren()) c.destroy();
-    this.fx?.clear(); this.shots.clear(); this.blowGroups.clear();
+    this.fx?.clear(); this.fireFx?.clear(); this.specials.clear(); this.shots.clear(); this.blowGroups.clear();
     for (const o of [...this.indoor, ...this.rising]) this.dropCrops(o.wall!);
-    this.occluders = []; this.indoor = []; this.rising = []; this.indoorOf = undefined; this.openingGuides = []; this.pendingChunks = []; this.doors.clear(); this.doorGuides.clear(); this.facedDoor = null; this.stairLabels.clear(); this.actors.clear(); this.bullets.clear(); this.crates.clear(); this.loot.clear(); this.muzzles = []; this.swings = [];
+    this.occluders = []; this.indoor = []; this.rising = []; this.indoorOf = undefined; this.openingGuides = []; this.pendingChunks = []; this.doors.clear(); this.doorGuides.clear(); this.facedDoor = null; this.stairLabels.clear(); this.promptBox = null; this.actors.clear(); this.bullets.clear(); this.crates.clear(); this.loot.clear(); this.muzzles = []; this.swings = []; this.marketProps = []; this.breakerProp = null;
     this.debugG.clear();
   }
 
@@ -416,10 +445,11 @@ export class CoastView {
     for (const e of m.entries) {
       if (!mall?.flights.has(e.id)) {
         const s = new Sprite(this.tex.ensure(`stairs:${e.kind}`, () => paintStairs(e.kind === 'up' ? 'up' : 'down')));
-        s.position.set(Math.floor(e.at.x / 32) * 32, Math.floor(e.at.y / 32) * 32 - 8); this.groundLayer.addChild(s);
+        const art = stairArt(e); s.position.set(art.x, art.y); this.groundLayer.addChild(s);
       }
       // The label's place and size in the world; the host draws its text in the HUD's own pixel face (world-space text
-      // would be upscaled with the scene and blur), so the sprite itself is never rendered.
+      // would be upscaled with the scene and blur), so the sprite itself is never rendered. Its painted size stands in for
+      // the text until the host reports the measured box (hudLabelSizes), which then sets the sprite's size.
       const label = new Sprite(this.tex.ensure(`stairs-label:${e.label}`, () => paintStairLabel(e.label)));
       label.anchor.set(.5, 0); label.position.set(e.at.x, e.at.y + 22); label.visible = false; label.renderable = false;
       this.overhead.addChild(label); this.stairLabels.set(e.id, label);
@@ -441,6 +471,7 @@ export class CoastView {
     }, mall);
     else this.buildGeneric(m, f, M, roofs);
     if (m.key.mapId === 'coast') this.dressCoast();
+    if (m.key.mapId === 'coast' && m.key.worldVersion === STORY_WORLD) this.dressMarket();
     // Awnings keep the pavement under them dry; the mall's footprint keeps all of its floor dry.
     const awnings = m.key.mapId === 'coast' ? [11, 25].map(tx => ({ x: tx * 32, y: 15 * 32 - 8, w: 4 * 32, h: 40 })) : isMall(m) ? [{ ...MALL_FOOTPRINT }] : [];
     this.tide.setMap(m);
@@ -579,6 +610,31 @@ export class CoastView {
     return o;
   }
 
+  /** The market story's standing scenery (#83), lit like the crates. */
+  private marketProps: Sprite[] = [];
+  private breakerProp: Sprite | null = null;
+  /**
+   * The market story's scenery in the old trading hall (#83): the chest freezer, the breaker box against the east wall
+   * and the painted edge of the switch room. None of it collides or is a target; the tool cabinet is the Runtime's own
+   * container (syncCrates) and the check prompt is the host's.
+   */
+  private dressMarket() {
+    const prop = (key: string, paint: () => HTMLCanvasElement, x: number, foot: number, footRow: number, height: number): Sprite => {
+      const s = new Sprite(this.tex.ensure(key, paint)); s.anchor.set(.5, footRow / height); s.position.set(Math.round(x), Math.round(foot)); s.zIndex = foot;
+      this.sorted.addChild(s); this.marketProps.push(s);
+      const shadow = new Sprite(this.tex.blob(Math.round(s.texture.width * .8), 6)); shadow.anchor.set(.5); shadow.position.set(Math.round(x) + 2, Math.round(foot) + 1); this.shadows.addChild(shadow);
+      return s;
+    };
+    const freezer = MARKET_ANCHORS['ch01-sc-freezer'], breaker = MARKET_ANCHORS['ch01-sc-breaker'];
+    prop('market:freezer', paintFreezer, freezer.x, freezer.y + 6, FREEZER_FOOT, 24);
+    // Against the east wall but wholly inside the hall (the wall column starts 16 px east of the anchor).
+    this.breakerProp = prop('market:breaker', paintBreaker, breaker.x + 3, breaker.y - 12, BREAKER_FOOT, 34);
+    // The switch room's painted edge on the floor: a dashed hazard line where the hall turns into it (x 27, rows 37-40).
+    const edge = new Graphics(), x = 27 * 32, y0 = 37 * 32, y1 = 41 * 32;
+    for (let y = y0 + 2; y < y1 - 2; y += 10) edge.rect(x, y, 2, Math.min(6, y1 - 2 - y)).fill({ color: 0xb8963e, alpha: .55 });
+    edge.rect(x + 2, y0 + 2, 1, y1 - y0 - 4).fill({ color: 0x14120f, alpha: .25 });
+    this.groundLayer.addChild(edge);
+  }
   private dressCoast() {
     const canopy = (tx: number, w: number, row: number) => {
       const key = `canopy:${w}`; this.tex.ensure(key, () => paintCanopy(w * 32));
@@ -687,6 +743,7 @@ export class CoastView {
     const shown = (p: Point) => shownAt(this.map!, f.revealed, p);
     switch (e.type) {
       case 'shot': {
+        if (e.round) for (const p of e.pellets) this.specials.set(p.bullet, { round: e.round, ...(e.color ? { color: e.color } : {}) });
         const a = actor(e.shooter); if (!a) break;
         const tip = this.muzzleOf(a);
         // The tracers of this shot leave the drawn muzzle; a shooter in view also shows them from there on.
@@ -710,10 +767,11 @@ export class CoastView {
         if (e.weapon === 'shotgun') sp.scale.set(1.4);
         this.sorted.addChild(sp); this.muzzles.push({ s: sp, t: null, shooter: a.uid, weapon: a.weapon });
         this.light.lights.push({ x: a.x + c * 20, y: a.y + s * 20, r: e.weapon === 'shotgun' ? 100 : 80, color: 0xe0b878, k: .9, ttl: .07, region: a.regionId });
+        if (e.round === 'dragon') this.fireFx.muzzle(tip?.at ?? { x: a.x + c * reach, y: a.y - AIM_H + s * reach }, a.y, angle, a.regionId);
         if (e.weapon !== 'shotgun') this.fx.casing(a.x + c * 4, a.y + s * 4, AIM_H - 2, angle, this.rnd);
         this.fx.smoke(a.x + c * (reach + 2), a.y + s * (reach + 2) * .6, AIM_H, this.rnd, e.weapon === 'shotgun' ? 5 : 3);
         if (a.kind === 'player' && !this.opts.reducedMotion) {
-          this.shake = Math.min(2, this.shake + (e.weapon === 'shotgun' ? 1.5 : .6));
+          this.shake = Math.min(e.round === 'dragon' ? 3 : 2, this.shake + (e.round === 'dragon' ? 2.4 : e.weapon === 'shotgun' ? 1.5 : .6));
           const k = e.weapon === 'shotgun' ? 4 : e.weapon === 'carbine' ? 2.5 : 2;
           this.recoil.x -= c * k; this.recoil.y -= s * k;
         }
@@ -729,6 +787,14 @@ export class CoastView {
       }
       case 'impact': {
         if (!shown(e.lastFree)) break;
+        const special = this.specials.get(e.bullet);
+        // A dragon's breath pellet shows its burst (the blast event), not sparks.
+        if (special?.round === 'dragon') break;
+        if (special?.round === 'tracer' && e.reason !== 'range') {
+          const b = this.bullets.get(e.bullet), v = b ? Math.hypot(b.vx, b.vy) || 1 : 1;
+          const n = e.normal ?? (b ? { x: -b.vx / v, y: -b.vy / v } : { x: 0, y: 1 }), p = e.reason === 'hit-actor' ? e.contact ?? e.lastFree : e.lastFree;
+          this.fireFx.star(p.x, p.y + .5, AIM_H, n, regionAt(p), tracerPalette(special.color ?? 'red', this.hue(e.bullet)));
+        }
         if (e.owner && actor(e.owner)?.tactics?.archetype === 'sac-spitter') {
           this.fx.acid(e.lastFree.x, e.lastFree.y, 0, this.rnd, true); break;
         }
@@ -753,6 +819,17 @@ export class CoastView {
         const a = actor(e.uid), drops = !group ? 6 : group.bled ? 0 : bloodDrops(group.pellets, group.again);
         if (group) group.bled = true;
         if (a && shown(a) && drops) this.fx.blood(a.x, a.y + .5, AIM_H, e.angle ?? 0, this.rnd, drops);
+        break;
+      }
+      case 'blast': {
+        if (!shown(e.at)) break;
+        const fresh = this.fireFx.blast(e.at.x, e.at.y, e.radius, regionAt(e.at), e.seq);
+        // The blast rocks the camera, more the closer it is (never with reduced motion).
+        if (fresh && !this.opts.reducedMotion) {
+          const near = Math.max(0, 1 - Math.hypot(e.at.x - f.player.x, e.at.y - f.player.y) / 420);
+          this.shake = Math.max(this.shake, 2.5 + 5 * near);
+          this.recoil = pushCamera(this.recoil, Math.atan2(f.player.y - e.at.y, f.player.x - e.at.x) + Math.PI, 2.5 * near);
+        }
         break;
       }
       case 'door': { const d = this.map!.doors.find(x => x.id === e.id); if (d) this.fx.dust(d.x * 32 + 16, d.y * 32 + 30, this.rnd, 4); break; }
@@ -933,14 +1010,17 @@ export class CoastView {
       if (c.kind !== 'crate') continue;
       seen.add(c.id);
       const empty = c.stacks === 0, look = empty ? 'empty' : this.openContainer === c.id ? 'open' : 'full';
+      // The market's tool cabinet (#83) is a container like any crate, drawn as 蔡建平's tall steel locker.
+      const cabinet = c.id === STORY_CABINET && this.map?.key.worldVersion === STORY_WORLD;
+      const key = cabinet ? `cabinet:${look}` : `crate:${look}`, tex = () => cabinet ? this.tex.ensure(key, () => paintToolCabinet(look)) : this.tex.crate(look);
       let e = this.crates.get(c.id);
       if (!e) {
-        const s = new Sprite(this.tex.crate(look)); s.anchor.set(.5, 22 / 28); s.position.set(Math.round(c.x), Math.round(c.y)); s.zIndex = c.y + 1;
-        const shadow = new Sprite(this.tex.blob(26, 6)); shadow.anchor.set(.5); shadow.position.set(Math.round(c.x) + 2, Math.round(c.y) + 1);
-        this.sorted.addChild(s); this.shadows.addChild(shadow); e = { s, shadow, empty, look }; this.crates.set(c.id, e);
+        const s = new Sprite(tex()); s.anchor.set(.5, cabinet ? CABINET_FOOT / 40 : 22 / 28); s.position.set(Math.round(c.x), Math.round(c.y)); s.zIndex = c.y + 1;
+        const shadow = new Sprite(this.tex.blob(cabinet ? 20 : 26, 6)); shadow.anchor.set(.5); shadow.position.set(Math.round(c.x) + 2, Math.round(c.y) + 1);
+        this.sorted.addChild(s); this.shadows.addChild(shadow); e = { s, shadow, empty, look, key }; this.crates.set(c.id, e);
       }
       if (e.empty !== empty) { e.empty = empty; this.fx.dust(c.x, c.y, this.rnd, 3); }
-      if (e.look !== look) { e.look = look; e.s.texture = this.tex.crate(look); }
+      if (e.look !== look) { e.look = look; e.key = key; e.s.texture = tex(); }
       e.s.visible = e.shadow.visible = visible(c.regionId);
     }
     for (const [id, e] of this.crates) if (!seen.has(id)) { e.s.destroy(); e.shadow.destroy(); this.crates.delete(id); }
@@ -979,16 +1059,73 @@ export class CoastView {
       const start = e.from ?? { x: e.born.x, y: e.born.y - height };
       const out = (headX - start.x) * ux + (headY - start.y) * uy - (e.from ? 0 : 3);
       const back = e.seen ? (headX - e.seen.x) * ux + (headY - e.seen.y) * uy : 0;
-      const len = Math.min(b.enemy ? 8 : 14, out, back);
+      const special = b.round ? { round: b.round, color: b.color } : this.specials.get(b.uid), round = special?.round;
       e.g.clear();
-      if (len > 0) e.g.moveTo(hx - ux * len, hy - uy * len).lineTo(hx, hy).stroke({ width: acid ? 2 : 1, color: acid ? 0x9da758 : b.enemy ? 0xe48c64 : 0xffe6a8, alpha: .55 });
-      if (out > 0) {
-        if (acid) e.g.circle(hx, hy, 2).fill(0xb6c16e);
-        else e.g.rect(hx, hy, 1, 1).fill(b.enemy ? 0xffc29a : 0xfff6d8);
+      // Special rounds glow: their trail adds light to what is under it.
+      e.g.blendMode = round ? 'add' : 'normal';
+      if (special && round) this.drawSpecial(e.g, round, special.color ?? 'red', hx, hy, ux, uy, Math.min(round === 'dragon' ? 28 : 44, out, back), out > 0, show, b);
+      else {
+        const len = Math.min(b.enemy ? 8 : 14, out, back);
+        if (len > 0) e.g.moveTo(hx - ux * len, hy - uy * len).lineTo(hx, hy).stroke({ width: acid ? 2 : 1, color: acid ? 0x9da758 : b.enemy ? 0xe48c64 : 0xffe6a8, alpha: .55 });
+        if (out > 0) {
+          if (acid) e.g.circle(hx, hy, 2).fill(0xb6c16e);
+          else e.g.rect(hx, hy, 1, 1).fill(b.enemy ? 0xffc29a : 0xfff6d8);
+        }
       }
       e.g.zIndex = b.y + .1; e.g.visible = show;
     }
     for (const [uid, e] of this.bullets) if (!seen.has(uid)) { e.g.visible = false; queueMicrotask(() => { if (this.bullets.get(uid) === e) { e.g.destroy(); this.bullets.delete(uid); } }); }
+  }
+
+  /**
+   * A special round's trail (special-rounds.ts), its head at (hx, hy) flying along (ux, uy), `len` px of it out of the
+   * barrel. A tracer burns in its colour, three times as long and bright as an ordinary trail, over a faint glow; a
+   * rainbow tracer's trail is bands of hue that sweep along it as it flies. A dragon's breath pellet is a small fireball
+   * dragging a tail of flame and dropping embers. Both light the ground under them.
+   */
+  private drawSpecial(g: Graphics, round: RoundKind, color: TracerColor, hx: number, hy: number, ux: number, uy: number, len: number, out: boolean, show: boolean,
+    b: { uid: string; x: number; y: number }) {
+    if (round === 'tracer') {
+      const hue = this.hue(b.uid), head = tracerPalette(color, hue);
+      if (len > 0 && color === 'rainbow') {
+        // Bands from the tail to the head, each a step further round the wheel.
+        const bands = 7;
+        for (let i = 0; i < bands; i++) {
+          const from = len * (1 - i / bands), to = len * (1 - (i + 1) / bands), p = tracerPalette(color, hue - (bands - 1 - i) * .09);
+          g.moveTo(hx - ux * from, hy - uy * from).lineTo(hx - ux * to, hy - uy * to).stroke({ width: 5, color: p.glow, alpha: .3 });
+          g.moveTo(hx - ux * from, hy - uy * from).lineTo(hx - ux * to, hy - uy * to).stroke({ width: 2, color: p.mid, alpha: .95 });
+        }
+        g.moveTo(hx - ux * len * .3, hy - uy * len * .3).lineTo(hx, hy).stroke({ width: 1, color: head.core, alpha: 1 });
+      } else if (len > 0) {
+        g.moveTo(hx - ux * len, hy - uy * len).lineTo(hx, hy).stroke({ width: 5, color: head.glow, alpha: .28 });
+        g.moveTo(hx - ux * len, hy - uy * len).lineTo(hx, hy).stroke({ width: 2, color: head.mid, alpha: .95 });
+        g.moveTo(hx - ux * len * .5, hy - uy * len * .5).lineTo(hx, hy).stroke({ width: 1, color: head.core, alpha: 1 });
+      }
+      if (out) { g.circle(hx, hy, 2.5).fill({ color: head.mid, alpha: .5 }); g.rect(hx - 1, hy - 1, 2, 2).fill(head.core); }
+      if (out && show) this.light.lights.push({ x: b.x, y: b.y, r: 34, color: head.light, k: .5, ttl: .05 });
+      return;
+    }
+    if (len > 0) {
+      const tail = [[1, 3, 0xb0301c, .35], [.7, 3, 0xff6a24, .6], [.4, 2, 0xffb347, .85]] as const;
+      for (const [k, w, c, a] of tail) g.moveTo(hx - ux * len * k, hy - uy * len * k).lineTo(hx, hy).stroke({ width: w, color: c, alpha: a });
+    }
+    if (!out) return;
+    g.circle(hx, hy, 3.5).fill({ color: 0xff7a2a, alpha: .55 });
+    g.circle(hx, hy, 2.2).fill(0xffc24a);
+    g.rect(hx - 1, hy - 1, 2, 2).fill(0xfffbe0);
+    if (!show) return;
+    this.light.lights.push({ x: b.x, y: b.y, r: 46, color: 0xff8a3c, k: .55, ttl: .05 });
+    if (this.rnd() < .6) this.fx.spawn({ x: b.x - ux * 4, y: b.y - uy * 4, h: AIM_H, vx: (this.rnd() - .5) * 30, vy: (this.rnd() - .5) * 14, vh: 10 + this.rnd() * 30,
+      ttl: .25 + this.rnd() * .3, color: this.rnd() < .5 ? 0xffb347 : 0xff6a24, g: 120, add: true, decor: true });
+  }
+
+  /** A rainbow tracer's hue now: it turns about one and a half times a second, each round from its own start. */
+  private hue(uid: string) {
+    // A well-mixed hash: rounds fired one after another (uids a step apart) start far apart on the wheel.
+    let h = 0x811c9dc5;
+    for (let i = 0; i < uid.length; i++) h = Math.imul(h ^ uid.charCodeAt(i), 0x01000193);
+    h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12;
+    return (h >>> 0) / 4294967296 + this.time * 1.5;
   }
 
   private updateExit(f: ViewFrame) {
@@ -1195,16 +1332,26 @@ export class CoastView {
       if (threats.some(t => intersects(t, box))) guide.visible = false;
     }
     if (!facing && this.facedDoor) this.facedDoor.glow.visible = this.facedDoor.way.visible = false;
-    for (const entry of map.entries) {
+    // Stair labels stay beside their own stairs (#26 F07/F11): under them, else over them, else at the side away from the
+    // player. Never on the player or the faced door's cue; clear of door marks, the prompt, other stairs and labels where a
+    // side allows. A label is never moved for an enemy: the host hides it while it covers one (S03c).
+    const cue = this.facedDoor, hard: Rect[] = [{ x: f.player.x - 14, y: f.player.y - 44, w: 28, h: 48 }];
+    if (cue?.way.visible) hard.push({ x: cue.way.x, y: cue.way.y, w: cue.way.texture.width, h: cue.way.texture.height });
+    if (cue?.glow.visible && cue.lit) hard.push(cue.lit);
+    // Door marks: each shown guide's floor square (paintDoorGuide), on the door's cell.
+    const arts = map.entries.map(stairArt), marks: Rect[] = [...this.doorGuides.values()].filter(g => g.visible).map(g => ({ x: g.x + 2, y: g.y + WALL_H + 2, w: 28, h: 28 }));
+    if (this.promptBox) marks.push(this.promptBox);
+    map.entries.forEach((entry, i) => {
       const label = this.stairLabels.get(entry.id)!;
       label.visible = knownStructurePoint(map, entry.at, f.revealed, occupied);
       // Mall floors: a drawn flight needs no label (the floor arrows lead to it); other stairs are named when near.
       if (this.mall && (this.mall.flights.has(entry.id) || Math.hypot(entry.at.x - f.player.x, entry.at.y - f.player.y) > MALL_LABEL_RANGE)) label.visible = false;
-      label.position.set(entry.at.x, entry.at.y + 22);
-      // Move below the player when needed; the interaction prompt already occupies the space above the head.
-      if (label.visible && intersects({ x: label.x - label.width / 2, y: label.y, w: label.width, h: label.height },
-        { x: f.player.x - 14, y: f.player.y - 44, w: 28, h: 48 })) label.y = f.player.y + 8;
-    }
+      const hud = this.hudLabelSizes.get(entry.id); if (hud) { label.width = hud.w; label.height = hud.h; }
+      const order: LabelSide[] = f.player.x < entry.at.x ? ['below', 'above', 'right', 'left'] : ['below', 'above', 'left', 'right'];
+      const box = stairLabelPlace(arts[i], label.width, label.height, order, hard, [...marks, ...arts.filter((_, j) => j !== i)]);
+      label.position.set(box.x + box.w / 2, box.y);
+      if (label.visible) marks.push(box);
+    });
   }
   /**
    * Marks the door being faced: its leaf (or doorway) glows, pulsing unless motion is reduced, and the cells either side
@@ -1213,16 +1360,19 @@ export class CoastView {
    * cover it like any floor and it shows nothing of the far side.
    */
   private showFacedDoor(door: MapDef['doors'][number], open: boolean) {
-    const cue = this.facedDoor ??= { glow: this.sorted.addChild(new Sprite()), way: this.flat.addChild(new Sprite()) };
+    const cue = this.facedDoor ??= { glow: this.sorted.addChild(new Sprite()), way: this.flat.addChild(new Sprite()), lit: null };
     const { glow, way } = cue, o = this.doors.get(door.id)!;
     way.texture = this.tex.ensure(`passage-guide:${door.wall}:${open}`, () => paintPassageGuide(door.wall, open));
     way.position.set(door.wall === 'ns' ? (door.x - 1) * 32 : door.x * 32, door.wall === 'ns' ? door.y * 32 : (door.y - 1) * 32);
     way.visible = true;
     const pic = !o.sprite.visible || o.wall?.crops || (!o.wall && o.level > 0) ? null : o.wall ? o.shown ?? o.key : o.key;
-    glow.visible = !!pic;
+    glow.visible = !!pic; cue.lit = null;
     if (!pic) return;
-    glow.texture = this.tex.ensure(`${pic}|glow:${door.wall}`, () => doorGlow(this.tex.canvas(pic), door.wall));
+    const key = `${pic}|glow:${door.wall}`;
+    glow.texture = this.tex.ensure(key, () => doorGlow(this.tex.canvas(pic), door.wall));
     glow.position.set(o.rect.x, o.sprite.y); glow.zIndex = o.z + .01;
+    const lit = this.glowBounds.get(key) ?? alphaBounds(this.tex.canvas(key)); this.glowBounds.set(key, lit);
+    cue.lit = lit.w ? { x: glow.x + lit.x, y: glow.y + lit.y, w: lit.w, h: lit.h } : null;
     glow.tint = 0xf2deaa; glow.alpha = this.opts.reducedMotion ? .4 : .375 + Math.sin(this.time * 6) * .125;
   }
   private applyFade(o: Occluder) {
@@ -1260,6 +1410,12 @@ export class CoastView {
 
   private updateHighlight(f: ViewFrame, visible: (r: string | null) => boolean) {
     const t = f.interaction, h = this.highlight; h.visible = false;
+    if (this.storyFocus && this.breakerProp) {
+      const b = this.breakerProp;
+      h.texture = this.tex.ensure('market:breaker|rim', () => rimOf(this.tex.canvas('market:breaker')));
+      h.anchor.set(.5, (b.anchor.y * b.texture.height + 1) / (b.texture.height + 2)); h.position.copyFrom(b.position);
+      h.visible = true; h.tint = 0xf2deaa; h.alpha = .75 + Math.sin(this.time * 6) * .25; return;
+    }
     if (!t || t.kind !== 'container' && t.kind !== 'ground') return;
     if (t.kind === 'container') {
       const c = f.containers.find(x => x.id === t.ref.id); if (!c || !visible(c.regionId)) return;
@@ -1267,8 +1423,9 @@ export class CoastView {
         const g = c.ownerUid ? this.actors.get(c.ownerUid) : null; if (!g?.corpse) return;
         h.texture = this.tex.ensure(`${g.corpseKey}|rim`, () => rimOf(this.tex.canvas(g.corpseKey))); h.anchor.set(.5, (g.corpse.anchor.y * g.corpse.texture.height + 1) / (g.corpse.texture.height + 2)); h.position.copyFrom(g.corpse.position);
       } else {
-        const key = `crate:${this.crates.get(c.id)?.look ?? (c.stacks ? 'full' : 'empty')}`;
-        h.texture = this.tex.ensure(`${key}|rim`, () => rimOf(this.tex.canvas(key))); h.anchor.set(.5, 23 / 30); h.position.set(Math.round(c.x), Math.round(c.y));
+        const drawn = this.crates.get(c.id); if (!drawn) return;
+        h.texture = this.tex.ensure(`${drawn.key}|rim`, () => rimOf(this.tex.canvas(drawn.key)));
+        h.anchor.set(.5, (drawn.s.anchor.y * drawn.s.texture.height + 1) / (drawn.s.texture.height + 2)); h.position.set(Math.round(c.x), Math.round(c.y));
       }
     } else {
       const l = f.loot.find(x => x.uid === t.ref.id); if (!l) return;
@@ -1311,7 +1468,7 @@ export class CoastView {
     }
     // The drawn sprite of a lit id and its texture key: a crate, a ground item or a corpse, only while it is drawn.
     const drawn = (id: string): { key: string; s: Sprite } | null => {
-      const crate = this.crates.get(id); if (crate?.s.visible) return { key: `crate:${crate.look}`, s: crate.s };
+      const crate = this.crates.get(id); if (crate?.s.visible) return { key: crate.key, s: crate.s };
       const item = this.loot.get(id), l = f.loot.find(x => x.uid === id); if (item?.visible && l) return { key: `loot:${l.item}`, s: item };
       const c = f.containers.find(x => x.id === id), g = c?.kind === 'corpse' && c.ownerUid ? this.actors.get(c.ownerUid) : undefined;
       return g?.corpse?.visible ? { key: g.corpseKey, s: g.corpse } : null;
@@ -1388,6 +1545,7 @@ export class CoastView {
       g.body.tint = tint; g.weapon.tint = tint; g.arms[0].tint = g.arms[1].tint = tint; if (g.corpse) g.corpse.tint = tint;
     }
     for (const [, c] of this.crates) c.s.tint = this.light.at({ x: c.s.x, y: c.s.y }, null, rv);
+    for (const s of this.marketProps) s.tint = this.light.at({ x: s.x, y: s.y }, null, rv);
     for (const s of this.sorted.children) if ((s as Sprite & { lowLit?: boolean }).lowLit) (s as Sprite).tint = this.light.at({ x: s.x + 16, y: s.y + 40 }, null, rv);
   }
 
@@ -1557,6 +1715,13 @@ function doorGlow(c: HTMLCanvasElement, wall: 'ew' | 'ns'): HTMLCanvasElement {
   const s = silhouette(c);
   if (wall === 'ew') { const g = s.getContext('2d')!; g.clearRect(0, 0, s.width, 32); g.clearRect(0, 0, 4, s.height); g.clearRect(28, 0, s.width - 28, s.height); }
   return s;
+}
+/** Bounds of a picture's non-transparent pixels (w 0 when it has none). */
+function alphaBounds(c: HTMLCanvasElement): Rect {
+  const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  return x1 < 0 ? { x: 0, y: 0, w: 0, h: 0 } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 function rimOf(c: HTMLCanvasElement): HTMLCanvasElement {
   const o = document.createElement('canvas'); o.width = c.width + 2; o.height = c.height + 2;

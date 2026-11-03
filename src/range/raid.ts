@@ -16,6 +16,7 @@ import { checkpointBodyFits, traversable } from '../spatial';
 import type { Point } from '../world';
 import type { PartNode } from '../gunsmith/instance';
 import type { GunId } from '../gunsmith/catalog';
+import { roundFits, TRACER_COLORS, type RoundKind, type TracerColor } from '../special-rounds';
 
 /**
  * The weapons the panel hands out: every gun of the catalog (#28 M3), by class as WEAPONS.md lists them (pistols,
@@ -96,7 +97,7 @@ const hurt = (e: EnemyState | undefined) => !!e && e.hp < D.ENEMIES[e.id].hp;
 export interface RangeStats {
     /** Shots fired and knife swings. */
     shots: number;
-    /** Hurt events per target id: every shotgun pellet that lands counts. */
+    /** Hurt events per target id: every shotgun pellet that lands counts; a fire's burst and burning do not. */
     hits: Record<string, number>;
 }
 
@@ -189,6 +190,28 @@ export class ShootingRange {
         stock(state.loadout, 1);
         c.restore(state);
         drawAim(c.handling, SWAY);
+        // A gun that cannot load the chosen round (dragon's breath outside a shotgun) goes back to its ordinary rounds.
+        if (c.round && !roundFits(c.round, D.equippedWeapon(l).ammo)) c.round = null;
+    }
+    /**
+     * The round the gun in hand fires from now on (special-rounds.ts; maintainer 2026-11-02, step 1 of 曳光弹/龙息弹):
+     * null for its own ordinary ammunition. A kind the gun cannot load is refused: false, nothing changes.
+     */
+    setRound(kind: RoundKind | null): boolean {
+        const c = this.core;
+        if (!this.live || kind && (c.knife || !roundFits(kind, D.equippedWeapon(c.session.loadout!).ammo))) return false;
+        c.round = kind;
+        return true;
+    }
+    /**
+     * The tracers' colour (maintainer 2026-11-02: presets and a rainbow). Picking one also loads tracers when the gun in
+     * hand can take them, since a colour only shows on a tracer. False for an unknown colour.
+     */
+    setTracerColor(color: TracerColor): boolean {
+        if (!this.live || !TRACER_COLORS.includes(color)) return false;
+        this.core.tracerColor = color;
+        this.setRound('tracer');
+        return true;
     }
     private knife(on: boolean) {
         const c = this.core;
@@ -204,6 +227,7 @@ export class ShootingRange {
         if (!this.live) return;
         this.stats = ShootingRange.zero();
         this.walked = 0;
+        c.fire.clear();
         const state = c.snapshotExpansion();
         this.lineUp(state);
         c.restoreExpansion(state);
@@ -220,7 +244,7 @@ export class ShootingRange {
         const c = this.core, ids = this.ids;
         for (const e of batch.events) {
             if (e.type === 'shot' && e.shooter === 'player' || e.type === 'melee' && e.attacker === 'player') this.stats.shots++;
-            else if (e.type === 'hurt' && ids.has(e.uid)) this.stats.hits[ids.get(e.uid)!]++;
+            else if (e.type === 'hurt' && e.cause !== 'fire' && ids.has(e.uid)) this.stats.hits[ids.get(e.uid)!]++;
         }
         const time = batch.stamp.simulationTime, dt = Math.max(0, time - this.seen);
         this.seen = time;

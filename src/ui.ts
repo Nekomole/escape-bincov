@@ -26,7 +26,7 @@ import { artId, itemArtwork, painted } from './art/item-images';
 import { paintPortrait } from './art/portraits';
 import { sampleSupports, startCoastSample } from './coast-view/sample';
 import { enterStation, returnToStation, stationDefault } from './station-view/route';
-import { raidWorlds, sampleMallLayout, sampleMode, villageSeed } from './raid-areas';
+import { marketStory, raidWorlds, sampleMallLayout, sampleMode, villageSeed } from './raid-areas';
 import { provideNavigation } from './navigation';
 import { exportSave } from './save-export';
 import { toast } from './toast';
@@ -36,7 +36,7 @@ import { esc } from './html';
 import { SUPPLY_IDS } from './rpg';
 import { Workbench } from './gunsmith-view/bench';
 // The raid view and the station yard switch screens through this port rather than importing the page.
-provideNavigation({ changeState, enterExternalRun, render, hideoutExternal, startPreparedHideoutRaid });
+provideNavigation({ changeState, enterExternalRun, settled, render, hideoutExternal, startPreparedHideoutRaid });
 let phoneLayout = false;
 /** Phone layout, set by main.ts from the device and screen size: a presentation choice, not an input mode. */
 export function setPhoneLayout(on: boolean) { phoneLayout = on; }
@@ -96,6 +96,20 @@ function enterHideout() {
 const walkInLabel = () => '回到院子';
 /** Enter the run state for the raid host (coast-view/sample.ts), which draws and owns the whole raid. */
 export function enterExternalRun() { app.state = 'run'; app.overlay = ''; clearSelection(); showScreen('none', app.menuMotion); render(); }
+/**
+ * After a saved settlement (#163: one report per raid). The yard walks in through the gate and shows its report; the
+ * result page is the fallback: the tab-page entry, or a return the Runtime refused (its 「返回水产站」 tries again and
+ * then walks in without the report). A yard that fails to start has already put up the tab page; the report then opens
+ * there as a dialog.
+ */
+export function settled() {
+    if (!stationDefault()) { changeState('result'); return; }
+    void returnToStation().then(ok => {
+        if (ok) return;
+        if (app.state === 'result') changeState('result');
+        else if (app.state === 'hideout' && !app.station && app.result) setOverlay('report');
+    });
+}
 /** Switch the page's own screens (title, tab page, result); a raid always goes through enterExternalRun. */
 export function changeState(state: Exclude<typeof app.state, 'run'>) {
     if (state === 'hideout' && !app.pendingSettlement && !saved(saveSession.ensureRpg())) return;
@@ -107,6 +121,8 @@ export function changeState(state: Exclude<typeof app.state, 'run'>) {
 const btn = (label: string, action: string, cls = '', extra = '') => `<button class="${cls}" data-action="${action}" ${extra}>${label}</button>`;
 function preparedWeight(){const s=app.save,w=D.equippedWeapon(s.equipment);return D.weight(s.bag)+D.weight(s.safe)+D.ITEMS.knife.weight+D.equippedWeight(s.equipment)+(w.ammo?D.ITEMS[w.ammo].weight*s.equipment.ammo:0)+(app.expansion?.charm ? D.ITEMS[app.expansion.charm.id].weight : 0);}
 function inventoryCell() { return !touchLayout() && innerWidth >= 1700 && innerHeight >= 900 ? 80 : 54; }
+/** The shop's four grids (22 columns side by side) at the largest cell the page width allows, never below 54 px. */
+function shopCell() { return touchLayout() ? 54 : Math.max(54, Math.min(80, Math.floor((Math.min(innerWidth, 1920) - 300) / 22), Math.floor((innerHeight - 330) / 8))); }
 function itemIcon(id: string, small = false) {
     const size = small ? 24 : 32, art = artId(id), url = art ? painted(`item-${small ? 'small-' : ''}${art}`, size, size, c => paintItem(c, art, size)) : '';
     return url ? `<img class="item-icon${small ? ' compact-icon' : ''}" width="${small ? 24 : 32}" height="${small ? 24 : 32}" alt="" draggable="false" src="${url}">` : '';
@@ -216,7 +232,7 @@ function deploy() {
     const stop = D.deployBlocker(app.save);
     if (stop) { toast(stop); return; }
     const cfg = app.runWorld === 'mall' ? mallRunConfig(app.seed || Date.now()) : generateRun(app.seed || (sampleMode() === 'village' && app.runWorld === 'buildings' ? villageSeed() : Date.now()));
-    if (!saved(saveSession.beginRun(cfg.seed, app.runWorld === 'mall' ? 'mall' : app.runWorld === 'buildings', { mallLayout: sampleMallLayout(app.runWorld) }))) return;
+    if (!saved(saveSession.beginRun(cfg.seed, app.runWorld === 'mall' ? 'mall' : app.runWorld === 'buildings', { mallLayout: sampleMallLayout(app.runWorld), marketStory: marketStory(app.runWorld) }))) return;
     app.shop = null; void startCoastSample();
 }
 function checkout() {
@@ -264,10 +280,14 @@ export function render() {
     // The raid host draws its own HUD and panels; nothing of the old page shows during a raid.
     if (app.state === 'run') { ui().innerHTML = ''; return; }
     if (app.state === 'result') {
-        const r = app.result;
-        ui().innerHTML = `<div class="overlay"><div class="panel result"><div class="stamp">行动报告 <span>${r?.outcome === 'extract' ? '成功撤离' : '撤离失败'}</span></div><h2>${r?.outcome === 'extract' ? '你回来了。' : r?.outcome === 'timeout' ? '撤离时间已过。' : '未能撤离。'}</h2><p>${r?.outcome === 'extract' ? '装备和物资已带回水产站，进度已保存。' : '背包内的物资和主武器已丢失，安全箱内的物品和水手匕首保留。'}</p><div class="stats"><div><strong>${r?.kills || 0}</strong><span>击败敌人</span></div><div><strong>¥ ${r?.keptValue || 0}</strong><span>保留物资估值</span></div><div><strong>${app.save.stats.extracts} / ${app.save.stats.runs}</strong><span>累计撤离 / 出击</span></div></div>${btn('返回水产站　 →', 'return', 'primary')}</div></div>`;
+        ui().innerHTML = `<div class="overlay">${resultCard(btn('返回水产站　 →', 'return', 'primary'))}</div>`;
         bind();
     }
+}
+/** The old page's report card: the result screen's, and the tab page's dialog when the yard could not open after a raid. */
+function resultCard(action: string, attrs = '') {
+    const r = app.result;
+    return `<div class="panel result" ${attrs}><div class="stamp">行动报告 <span>${r?.outcome === 'extract' ? '成功撤离' : '撤离失败'}</span></div><h2>${r?.outcome === 'extract' ? '你回来了。' : r?.outcome === 'timeout' ? '撤离时间已过。' : '未能撤离。'}</h2><p>${r?.outcome === 'extract' ? '装备和物资已带回水产站，进度已保存。' : '背包内的物资和主武器已丢失，安全箱内的物品和水手匕首保留。'}</p><div class="stats"><div><strong>${r?.kills || 0}</strong><span>击败敌人</span></div><div><strong>¥ ${r?.keptValue || 0}</strong><span>保留物资估值</span></div><div><strong>${app.save.stats.extracts} / ${app.save.stats.runs}</strong><span>累计撤离 / 出击</span></div></div>${action}</div>`;
 }
 function shopCheckout() {
     if (app.placement) return `<div class="shop-placement">${placementControls()}</div>`;
@@ -387,7 +407,7 @@ function renderHideout() {
     } else if (app.tab === 'facilities') { body = facilityPanel();
     } else if (app.tab === 'arms' || app.tab === 'med') {
         const c = cart(), merchant = D.MERCHANTS[c.merchant], totals = Shop.cartTotals(c);
-        body = `<div class="merchant-heading">${merchantPortrait(app.tab)}<div><h3>${merchant.name}<span>${merchant.subtitle}</span></h3><p>先选物品，再一起结算。放回原侧可取消。</p></div></div><div class="shop-layout" data-merchant="${app.tab}"><section><h3>商人物品 · 按包购买</h3>${shopBrowseBar()}${grid(c.catalog, 'merchant', 54)}</section><section class="shop-buffer"><div><h3>待买 · ¥ ${totals.buy}</h3>${grid(c.buy, 'buy', 54)}</div><div><h3>待卖 · ¥ ${totals.sell}</h3>${grid(c.sell, 'sell', 54)}</div></section><section><h3>仓库 · 整组出售</h3>${grid(c.stash, 'stash', 54)}</section></div>${details()}`;
+        body = `<div class="merchant-heading">${merchantPortrait(app.tab)}<div><h3>${merchant.name}<span>${merchant.subtitle}</span></h3><p>先选物品，再一起结算。放回原侧可取消。</p></div></div><div class="shop-layout" data-merchant="${app.tab}"><section><h3>商人物品 · 按包购买</h3>${shopBrowseBar()}${grid(c.catalog, 'merchant', shopCell())}</section><section class="shop-buffer"><div><h3>待买 · ¥ ${totals.buy}</h3>${grid(c.buy, 'buy', shopCell())}</div><div><h3>待卖 · ¥ ${totals.sell}</h3>${grid(c.sell, 'sell', shopCell())}</div></section><section><h3>仓库 · 整组出售</h3>${grid(c.stash, 'stash', shopCell())}</section></div>${details()}`;
     } else if (app.tab === 'quests') {
         body = `<div class="quests">${Object.entries(D.QUESTS).map(([id, q], i) => {
             const complete = s.quests[id];
@@ -408,6 +428,7 @@ function renderHideout() {
     const content = ui().querySelector<HTMLElement>('.content.body-content'); if (content) content.scrollTop = bodyScroll;
     // Like the title dialogs: the keyboard lands in the perk preview (on its cancel button; main.ts keeps Tab inside it).
     if (app.overlay === 'perk') ui().querySelector<HTMLElement>('.perk-modal .perk-cancel')?.focus({ preventScroll: true });
+    if (app.overlay === 'report') ui().querySelector<HTMLElement>('.result [data-action="close"]')?.focus({ preventScroll: true });
 }
 function overlayHtml() {
     if (saveSession.requiresReload && !app.conflict) return `<div class="overlay"><div class="panel modal"><h2>进度已保存，请刷新页面</h2><p>当前页面恢复失败。本页不会再次写入，请导出备份后刷新页面。</p><div class="actions">${btn('导出备份', 'export-save')}${btn('刷新页面', 'refresh')}</div></div></div>`;
@@ -419,6 +440,7 @@ function overlayHtml() {
         return `<div class="overlay"><div class="panel modal"><h2>导入这份存档？</h2><p>现金 ¥ ${(app.pendingImport || app.pendingRecoveryImport!.profile).cash} · 累计出击 ${(app.pendingImport || app.pendingRecoveryImport!.profile).stats.runs} 次</p><p>导入会替换此浏览器中本游戏的进度，两个存档不会合并。请先导出当前存档。</p><div class="actions">${btn('先导出当前存档', 'export-save')}${btn('确认导入', 'confirm-import', 'primary')}${btn('取消', 'close')}</div></div></div>`;
     if (!app.overlay)
         return '';
+    if (app.overlay === 'report') return app.result ? `<div class="overlay">${resultCard(btn('回到站里', 'close', 'primary'), 'role="dialog" aria-modal="true" aria-label="行动报告"')}</div>` : '';
     if (app.overlay === 'gunsmith' && bench) return benchOverlayHtml(bench);
     if (app.overlay === 'shop-leave') return `<div class="overlay"><section class="panel modal"><h2>放弃未结算的清单？</h2><p>待买、待卖和仓库位置会恢复。现金与物资尚未改变。</p><div class="actions">${btn('继续挑选', 'close')}${btn('放弃清单并离开', 'shop-leave-confirm', 'danger')}</div></section></div>`;
     if (app.overlay === 'perk') return perkDialog ? perkOverlayHtml(perkDialog) : '';
@@ -445,6 +467,7 @@ export function retrySettlement(): boolean {
     if (!app.pendingSettlement) return false;
     if (!saved(saveSession.retrySettlement())) { setOverlay('save-error'); return false; }
     if (app.result!.outcome === 'extract') audio.extract(); else audio.death();
+    // This page's own dialog: its result page shows the report, and 「返回水产站」 walks in without a second one.
     changeState('result');
     return true;
 }
@@ -684,8 +707,8 @@ function bind() {
                 void playOpening('replay').then(() => { if (app.state !== 'menu') return; render(); ui().querySelector<HTMLElement>('[data-action="opening"]')?.focus(); });
                 break;
             case 'return':
-                // The yard plays the walk-in with the Runtime's one-time arrival; if it cannot, the tab page still works.
-                if (stationDefault()) void returnToStation().then(ok => { if (!ok && app.state === 'result') changeState('hideout'); });
+                // The fallback result page was this raid's report: the yard only plays the walk-in. If it cannot, the tab page still works.
+                if (stationDefault()) void returnToStation(true).then(ok => { if (!ok && app.state === 'result') changeState('hideout'); });
                 else changeState('hideout');
                 break;
             case 'menu':

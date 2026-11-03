@@ -21,8 +21,8 @@ export interface SceneState {
   focus: StationId | null;
   /** Room whose roof is lifted besides the player's own (a station opened from afar). */
   peekRoom: RoomId | null;
-  /** World point the camera looks at, and CSS px on the right covered by a docked panel. */
-  look: { x: number; y: number }; panelInset: number;
+  /** World point the camera looks at (panels are a centred frame over the yard, so nothing is kept clear beside them). */
+  look: { x: number; y: number };
   /** Fade to black (0..1) for departure/return. */
   curtain: number;
   training: { active: boolean; progress: number } | null;
@@ -375,10 +375,10 @@ export class HideoutScene {
     if (this.light.power !== st.power && !this.light.sequencing) this.light.setPower(st.power, false);
     this.light.update(dt);
 
-    // Camera: centre the look point in the part of the screen not covered by a docked panel.
-    const { w, h } = this.view, inset = st.panelInset * this.view.dpr / this.view.s;
-    let cx = st.look.x - (w - inset) / 2, cy = st.look.y - h / 2 - 12;
-    cx = Math.max(0, Math.min(W * T - w + inset, cx)); cy = Math.max(-WALL_H - 10, Math.min(H * T - h + 10, cy));
+    // Camera: centre the look point.
+    const { w, h } = this.view;
+    let cx = st.look.x - w / 2, cy = st.look.y - h / 2 - 12;
+    cx = Math.max(0, Math.min(W * T - w, cx)); cy = Math.max(-WALL_H - 10, Math.min(H * T - h + 10, cy));
     if (this.fit) { cx = this.fit.x + this.fit.w / 2 - w / 2; cy = this.fit.y + this.fit.h / 2 - h / 2; this.camF = { x: cx, y: cy }; }
     if (this.camF.x < 0) this.camF = { x: cx, y: cy };
     const k = Math.min(1, dt * 7);
