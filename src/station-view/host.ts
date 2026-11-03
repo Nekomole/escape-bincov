@@ -33,7 +33,7 @@ type Sequence =
   | { kind: 'power'; t: number }
   | { kind: 'leave'; t: number; runId: string }
   | { kind: 'away' }
-  | { kind: 'return'; t: number; summary: D.RunSummary };
+  | { kind: 'return'; t: number; summary: D.RunSummary | null };
 
 /** What the yard asks of the game around it; every save write still goes through the Runtime. */
 export interface StationHooks {
@@ -43,6 +43,8 @@ export interface StationHooks {
   seedFor(world: RunWorld): string;
   /** Layout revision for a new mall raid (3, the 2.5D one); undefined keeps the Runtime default. */
   mallLayout?(world: RunWorld): 1 | 2 | 3 | 4 | undefined;
+  /** Whether a new raid in this area deploys the market story world (#83). */
+  marketStory?(world: RunWorld): boolean;
   tabs(): void;
   title(): void;
   exportSave(): void;
@@ -56,7 +58,8 @@ export interface StationHooks {
 export interface HostOptions {
   app: Application; shadow: ShadowRoot; mount: HTMLElement; rt: HideoutRuntime; sol: Map<string, HTMLCanvasElement>; art: StationArt;
   test: boolean; reduced: boolean; frozen: boolean; mood: string; touch: boolean; volume: number;
-  arrival: { runId: string; summary: D.RunSummary } | null; world: RunWorld; seed: string; hooks: StationHooks;
+  /** A settled raid's one-time arrival; `summary` is null when the result page already showed its report. */
+  arrival: { runId: string; summary: D.RunSummary | null } | null; world: RunWorld; seed: string; hooks: StationHooks;
   /** Areas the deploy panel offers. */
   worlds: readonly RunWorld[];
 }
@@ -169,8 +172,10 @@ export class StationHost {
       this.keys.add(k);
     });
     s.on(window, 'keyup', e => { this.keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); });
-    s.on(window, 'blur', () => { this.keys.clear(); dropJoy(); });
-    s.on(document, 'visibilitychange', () => { this.keys.clear(); dropJoy(); });
+    // Leaving the window or hiding the page also ends a conversation with 小蔡 without answering (#83 mk-a27).
+    s.on(window, 'blur', () => { this.keys.clear(); dropJoy(); this.ui.releaseTalk(); });
+    s.on(window, 'pagehide', () => { this.keys.clear(); dropJoy(); this.ui.releaseTalk(); });
+    s.on(document, 'visibilitychange', () => { this.keys.clear(); dropJoy(); if (document.hidden) this.ui.releaseTalk(); });
     s.on(canvas, 'contextmenu', e => e.preventDefault());
     s.on(canvas, 'wheel', e => { e.preventDefault(); this.scene.zoom(e.deltaY < 0 ? 1 : -1); }, { passive: false });
     s.on(canvas, 'pointerdown', e => {
@@ -251,7 +256,7 @@ export class StationHost {
   /** Read-only reaction: no transaction is started from here (the Runtime would refuse a re-entrant one). */
   private event(e: HideoutEvent) {
     this.snap = this.rt.snapshot();
-    if (e.type === 'power-restored') { this.ui.close(); this.seq = { kind: 'power', t: 0 }; this.scene.light.setPower('restored', true); this.audio.cue('relay'); this.ui.setQuickVisible(false); }
+    if (e.type === 'power-restored') { this.ui.holdTalk(); this.ui.close(); this.seq = { kind: 'power', t: 0 }; this.scene.light.setPower('restored', true); this.audio.cue('relay'); this.ui.setQuickVisible(false); }
     if (e.type === 'facility-built') this.colKey = '';
     if (e.type === 'production-complete') { this.ui.toast('工作台：一批成品可以领取了。', 'ok'); this.audio.cue('ok'); }
     if (e.type === 'practice-credited') { this.ui.toast(`练习收益 +${(e.amount * 100).toFixed(1)}% 成长`, 'ok'); this.audio.cue('credit'); this.trainingFlash = 1; }
@@ -272,15 +277,15 @@ export class StationHost {
   private deploy(world: RunWorld, seed: string) {
     if (this.seq) return;
     const mallLayout = this.hooks.mallLayout?.(world);
-    const r = this.rt.deploy({ world, seed: seed.trim() || this.hooks.seedFor(world), ...mallLayout ? { mallLayout } : {} });
+    const r = this.rt.deploy({ world, seed: seed.trim() || this.hooks.seedFor(world), ...mallLayout ? { mallLayout } : {}, ...this.hooks.marketStory?.(world) ? { marketStory: true } : {} });
     if (!r.ok || !r.runId) { this.ui.toast(r.ok ? '出击没有准备好。' : r.message, 'error'); this.audio.cue('error'); if (!r.ok && (r.reason === 'storage' || r.reason === 'conflict')) this.ui.showStorage(); return; }
     // The run is saved now: the gate animation plays, then the raid starts from that checkpoint.
     this.ui.discard(); this.ui.setQuickVisible(false);
     this.seq = { kind: 'leave', t: 0, runId: r.runId }; this.gateOpen = true; this.colKey = ''; this.audio.cue('gate');
     this.path = [{ x: 27.5 * T, y: 20.3 * T }, { x: 27.5 * T, y: 23.2 * T }];
   }
-  /** Walk in through the gate from a settled raid; the report opens once inside. */
-  private arrive(summary: D.RunSummary) {
+  /** Walk in through the gate from a settled raid; the report (if not shown already) opens once inside. */
+  private arrive(summary: D.RunSummary | null) {
     this.player = { ...this.player, x: 27.5 * T, y: 23.3 * T, dir8: 6 };
     this.seq = { kind: 'return', t: 0, summary }; this.gateOpen = true; this.colKey = ''; this.curtain = 1;
     this.path = [{ x: 27.5 * T, y: 19.6 * T }];
@@ -342,7 +347,7 @@ export class StationHost {
     const state: SceneState = {
       player: { x: this.player.x, y: this.player.y, dir8: this.player.dir8, walkFrame: this.player.moving ? 1 + (Math.floor(this.player.walk) % 4) : 0 },
       actors, power: s.power, gateOpen: this.gateOpen, facilities: s.base.facilities, upgraded: s.profile.upgraded,
-      focus: this.ui.open ? panelStation?.id ?? null : this.focus?.id ?? null, peekRoom: peek, look, panelInset: this.ui.inset,
+      focus: this.ui.open ? panelStation?.id ?? null : this.focus?.id ?? null, peekRoom: peek, look,
       curtain: this.curtain, training: train ? { active: true, progress: training.capped ? 1 : Math.min(1, training.activeSeconds / 120) } : null,
       workbench: { progress: s.base.queue[0] ? 1 - s.base.queue[0].remaining / s.base.queue[0].duration : null, ready: s.base.completed.length },
       doorHint: door ? { x: door.d.x, y: door.d.y, dir: door.dir } : null,
@@ -465,7 +470,7 @@ export class StationHost {
       this.scene.setFit(q.t >= 1.4 && q.t <= 5.6 ? POWER_SHOT : null);
       q.t += dt;
       const lights = Math.floor((q.t - 1) * 6); if (q.t > 1 && q.t < 3.5 && lights !== Math.floor((q.t - 1 - dt) * 6)) this.audio.cue('lampOn');
-      if (q.t > 5.6) { this.seq = null; this.scene.setFit(null); this.ui.setQuickVisible(true); this.ui.toast(D.QUESTS.repair.radio, 'ok'); this.audio.cue('deliver'); }
+      if (q.t > 5.6) { this.seq = null; this.scene.setFit(null); this.ui.setQuickVisible(true); this.ui.toast(D.QUESTS.repair.radio, 'ok'); this.audio.cue('deliver'); this.ui.resumeTalk(); }
     } else if (q.kind === 'leave') {
       q.t += dt;
       if (q.t > 1.6) this.curtain = Math.min(1, this.curtain + dt * 1.6);
@@ -474,7 +479,7 @@ export class StationHost {
       this.curtain = 1;
     } else if (q.kind === 'return') {
       q.t += dt; this.curtain = Math.max(0, 1 - q.t * 1.2);
-      if (!this.path && q.t > 1) { this.gateOpen = false; this.colKey = ''; this.audio.cue('gate'); const summary = q.summary; this.seq = null; this.ui.summary = summary; this.ui.setQuickVisible(true); this.ui.show('report'); }
+      if (!this.path && q.t > 1) { this.gateOpen = false; this.colKey = ''; this.audio.cue('gate'); const summary = q.summary; this.seq = null; this.ui.setQuickVisible(true); if (summary) { this.ui.summary = summary; this.ui.show('report'); } }
     }
   }
 

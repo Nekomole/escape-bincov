@@ -61,3 +61,13 @@ Windows、Node 24.21.0、pnpm 11.19.0、Chrome 156.0.8078.48、离线正式 HTML
 ![1920×1080：样本已交付，船册仍需累计六次成功撤离](radio-quest-progression/radio-sample-done-1920.png)
 
 [旧页签 1920×1080](radio-quest-progression/radio-tabs-locked-1920.png)。真人、手机真机未验；未合并、未部署。
+
+## 交接记录（2026-11-03 按新约定从 handoff.md 和任务清单移入）
+
+### 2026-10-30 · 电台任务解锁节奏（#153）（原 handoff.md）
+
+从 main `e3a74961` 独立建立 `fix/radio-quest-progression`，承接用户「解决153」。维修任务仍作引导；样本/船册按前置任务和累计 3/6 次成功撤离依次交付，院子、旧页签、行动任务清单显示同一条件，存档格式与已完成任务不变。60×20 局原样本首次记录完成中位由 2/2/2 变为 2/5/8（样本在下一局出发后记录完成，实际交付发生在此前回站）；第三局后两任务完成率均为 0。1118 单测、package、院子专项 13/13 已通过，详细回归、负对照、限制与截图见[唯一任务摘要](radio-quest-progression.md)。准确 head、CI 和后续状态见承接 PR；未授权合并，真人节奏待 M4-06。
+
+### 原任务清单顶部入口（docs/WORK-QUEUE.md）
+
+本轮修复：**[电台任务与货架解锁节奏](radio-quest-progression.md)**（[#153](https://github.com/xuys2025/escape-bincov/issues/153)），分支 `fix/radio-quest-progression`，基线 main `e3a74961`。用户明确要求解决；#150 已合并，本次独立承接任务过快问题。维修保持前期引导，样本/船册分别增加前置任务和累计 3/6 次成功撤离门槛；保留已完成旧任务和货架。实现、60×20 局同口径样本与验证见记录；M4-06 真人试玩仍归 #80。准确 head 与 CI 见本修复 PR。

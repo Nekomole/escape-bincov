@@ -175,12 +175,17 @@ export function frameView(r: CoastRaidRuntime, map: MapDef, velocities: Readonly
                 reloading: enemy?.tactics?.phase === 'reload' ? { left: enemy.tactics.phaseLeft, total: spec!.reload } : player && r.reloadLeft > 0 ? { left: r.reloadLeft, total: r.reloadTime } : null,
                 attackCooldown: Math.max(0, enemy?.cooldown ?? r.fireCooldown), hurtLeft: player ? r.hitTime : r.hurtTimers.get(uid) ?? 0, ai: enemy?.state ?? null },
             regionId: regionAt(e), corpse: hp > 0 ? null : { angle: e.rotation - (enemy && !r.layered ? Math.PI / 2 : 0),
-                containerId: r.containers.some(c => c.id === containerId) ? containerId : null } };
+                containerId: r.containers.some(c => c.id === containerId) ? containerId : null },
+            ...(enemy && hp > 0 && r.fire.burning.has(uid) ? { burning: r.fire.left(uid) } : {}) };
     };
     const w = r.currentWeapon, loadout = r.session.loadout ?? r.terminalLoadout, grip = r.grip, body = r.layered ? rpgMultipliers(r.layered).recoil : 1;
     return {
         player: actor(r.player, true), actors: r.enemies.map(e => actor(e, false)),
-        bullets: r.bullets.map(b => ({ uid: b.uid, x: b.x, y: b.y, vx: b.vx, vy: b.vy, enemy: b.enemy, owner: bulletOwner(b) })),
+        bullets: r.bullets.map(b => {
+            const special = r.specialOf(b.uid);
+            return { uid: b.uid, x: b.x, y: b.y, vx: b.vx, vy: b.vy, enemy: b.enemy, owner: bulletOwner(b),
+                ...(special ? { round: special.kind } : {}), ...(special?.color ? { color: special.color } : {}) };
+        }),
         loot: r.loot.map(l => ({ uid: l.uid, item: l.id, qty: l.qty, x: l.x, y: l.y, regionId: regionAt(l) })),
         containers: r.containers.map(c => ({ id: c.id, runId: c.runId, kind: c.kind, name: c.name, x: c.x, y: c.y,
             stacks: c.inventory.items.length, totalQty: c.inventory.items.reduce((n, i) => n + i.qty, 0),
@@ -198,5 +203,6 @@ export function frameView(r: CoastRaidRuntime, map: MapDef, velocities: Readonly
             devices: devicesView(r, map, revealed), sight: r.gunSight,
             heals: D.count(loadout.bag, 'bandage') + D.count(loadout.bag, 'medkit'), hitDirections: r.hitDirections.map(h => ({ angle: h.angle, left: h.left })) },
         phase: r.ending ? 'ending' : r.paused ? 'paused' : r.overlay ? 'blocked' : 'running',
+        ...(r.fire.fires.length ? { fires: r.fire.fires.map(f => ({ id: f.id, x: f.x, y: f.y, r: f.r, left: f.left, total: f.total })) } : {}),
     };
 }

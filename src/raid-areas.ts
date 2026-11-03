@@ -21,6 +21,11 @@ export const raidWorlds = (): RunWorld[] => params().get('test') === '1' ? ['coa
 export const defaultWorld = (): RunWorld => sampleMode() === 'mall' ? 'mall' : 'buildings';
 /** Layout revision for a new mall raid: revision 4, every region furnished (older raids keep theirs). */
 export const sampleMallLayout = (world: string): 4 | undefined => world === 'mall' ? 4 : undefined;
+/**
+ * A new street raid deploys the market story world (#83, `coast-story-v1`): the same streets and buildings with the
+ * tool cabinet's supply and the market scenery. Raids already started keep their own world; the mall never takes it.
+ */
+export const marketStory = (world: string): boolean => world === 'buildings';
 
 /**
  * Playtest deploy with an empty seed field: take the first seed from the clock whose spawn lies in the dressed village

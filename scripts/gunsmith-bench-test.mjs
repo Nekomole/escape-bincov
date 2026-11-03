@@ -306,10 +306,11 @@ try {
     assert.match(await bench('.gs-sheet').innerText(), /轻型远距镜/);
     await shot('09-phone-844x390-sheet');
     await tap(bench('.gs-sheet [data-gs="sheet"]')); assert.equal(await bench('.gs-sheet').count(), 0);
-    // Turning the phone keeps the preview and the page.
-    await page.setViewportSize({ width: 390, height: 844 }); await bench('.gs.gs-compact').waitFor();
+    // Turning the phone keeps the preview and the page. The yard repaints the panel in its resize handler (marking it
+    // .portrait); measure after that repaint, not the frame between the new viewport and the resize event.
+    await page.setViewportSize({ width: 390, height: 844 }); await yard('.modal.k-gunsmith.portrait .gs.gs-compact').waitFor();
     assert.match(await bench('.gs-sumbtn').innerText(), /待装 1/); await phoneFits();
-    await page.setViewportSize({ width: 844, height: 390 });
+    await page.setViewportSize({ width: 844, height: 390 }); await yard('.modal.k-gunsmith:not(.portrait) .gs.gs-compact').waitFor();
     assert.equal((await equipped()).gun.parts.length, 0, 'nothing written yet');
     await tap(bench('[data-gs="confirm"]'));
     await page.waitForFunction(() => window.__bincov.hideoutRuntime.snapshot().profile.equipment.gun.parts.length === 1);

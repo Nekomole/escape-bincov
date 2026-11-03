@@ -15,12 +15,15 @@ import { worldKeyString } from '../raid-runtime/contract';
 import { insideFootprint } from './mall-dressing';
 import { enemyVoice } from './enemy-motion';
 import { timbreOfGun, timbreOfLook } from '../gun-timbre';
+import { MARKET_ANCHORS } from '../market-world';
 
 /** Other people's gunfire is quieter than the player's own, as the single shared report was (#75 H-02). */
 const ENEMY_SHOT = .55;
 
 export type SoundOut = Pick<SynthAudio, 'start' | 'stop' | 'shot' | 'step' | 'hit' | 'pickup' | 'click' | 'radio' | 'extract' | 'death'
-  | 'whiz' | 'impact' | 'dry' | 'heartbeat' | 'setRoomTone' | 'stow' | 'enemy'>;
+  | 'whiz' | 'impact' | 'dry' | 'heartbeat' | 'setRoomTone' | 'stow' | 'enemy' | 'knocks' | 'call'>;
+/** Where a market story sound comes from (#83): the freezer, and the switch room for the call heard at the cabinet. */
+const STORY_SOUND_AT: Record<string, { x: number; y: number }> = { 'ch01-sc-freezer': MARKET_ANCHORS['ch01-sc-freezer'], 'ch01-sc-call': MARKET_ANCHORS['ch01-sc-breaker'] };
 
 /** Closest distance from point p to the segment a-b. */
 function segmentDistance(ax: number, ay: number, bx: number, by: number, px: number, py: number) {
@@ -30,11 +33,16 @@ function segmentDistance(ax: number, ay: number, bx: number, by: number, px: num
 
 /** Hit confirmation (#75): the player's own pain, a confirmed critical and a confirmed kill. */
 export type HitCueOut = Pick<SynthAudio, 'pain' | 'crit' | 'kill'>;
+/** The special rounds' cues (special-rounds.ts); optional, so an output without them simply stays quiet for them. */
+export type FireOut = Partial<Pick<SynthAudio, 'blast' | 'flame' | 'crackle'>>;
 type HeardHits = { hit: Set<string>; crit: Set<string> };
 
 export class SampleSound {
   private live: boolean | null = null;
   private stepLeft = 0;
+  /** Seconds to the next ground-fire crackle, and the last burst heard (special rounds). */
+  private crackleLeft = 0;
+  private boom: { t: number; x: number; y: number } | null = null;
   private reloading = false;
   private heals: number | null = null;
   private beatLeft = 0;
@@ -54,7 +62,7 @@ export class SampleSound {
   private switches = '';
 
   /** `feel` is read at every shot: the range's A/B switch (ViewOptions.feel). */
-  constructor(private readonly out: SoundOut & HitCueOut, private readonly feel: () => 'enhanced' | 'classic' = () => 'enhanced') {}
+  constructor(private readonly out: SoundOut & HitCueOut & FireOut, private readonly feel: () => 'enhanced' | 'classic' = () => 'enhanced') {}
 
   /** Stereo position and level of a sound at world (x, y) for the player standing at the listener. */
   spot(x: number, y: number): Spot {
@@ -134,6 +142,16 @@ export class SampleSound {
     // A heal (Q) spends a supply: the original plays the pickup cue for any used supply.
     if (this.heals !== null && f.hud.heals < this.heals) this.out.pickup();
     this.heals = f.hud.heals;
+    // Ground fires crackle now and then, the nearest one heard where it burns.
+    const fires = f.fires ?? [];
+    if (fires.length) {
+      this.crackleLeft -= dt;
+      if (this.crackleLeft <= 0) {
+        const near = fires.reduce((a, c) => Math.hypot(c.x - p.x, c.y - p.y) < Math.hypot(a.x - p.x, a.y - p.y) ? c : a);
+        this.crackleLeft = .07 + Math.random() * .16;
+        if (Math.hypot(near.x - p.x, near.y - p.y) < 520) this.out.crackle?.(this.spot(near.x, near.y));
+      }
+    } else this.crackleLeft = 0;
     // Near misses: an enemy round whose path this frame passes within 30 px of the player.
     const seen = new Set<string>();
     for (const bl of f.bullets ?? []) {
@@ -170,6 +188,7 @@ export class SampleSound {
         if (e.shooter === 'player') {
           const kind = timbre ?? (e.weapon === 'shotgun' ? 'shotgun' : 'pistol');
           if (e.suppressed) this.out.shot(kind, undefined, 1, true); else this.out.shot(kind);
+          if (e.round === 'dragon') this.out.flame?.();
           break;
         }
         const s = at(e.shooter) ?? (e.pellets[0] ? this.spot(e.pellets[0].origin.x, e.pellets[0].origin.y) : undefined);
@@ -178,6 +197,13 @@ export class SampleSound {
         break;
       }
       case 'melee': if (e.attacker === 'player') this.out.shot('knife'); break;
+      // A market story cue (#83), only once its write succeeded; the host shows its text whatever the volume.
+      case 'story-cue': {
+        if (e.durability !== 'committed' || !e.sound) break;
+        const p = STORY_SOUND_AT[e.source], s = p ? this.spot(p.x, p.y) : undefined;
+        if (e.sound === 'knocks') this.out.knocks(s); else this.out.call(s);
+        break;
+      }
       // Blows only, of any size (R6-L2 names the cause): bleeding, pollution, thirst, hunger and a lowered health limit
       // are silent here; the HUD shows them.
       case 'hurt': {
@@ -195,6 +221,14 @@ export class SampleSound {
           const s = this.spot(e.lastFree.x, e.lastFree.y); if (s.gain > .3) this.out.impact(s, this.feel() === 'classic' ? undefined : e.surface);
         }
         break;
+      case 'blast': {
+        // The pellets of one shot burst together: one boom for them (within 0.08 s and 48 px of the last).
+        const t = e.stamp.simulationTime, last = this.boom;
+        if (!shown(e.at) || last && t - last.t < .08 && t >= last.t && Math.hypot(last.x - e.at.x, last.y - e.at.y) < 48) break;
+        this.boom = { t, x: e.at.x, y: e.at.y };
+        this.out.blast?.(this.spot(e.at.x, e.at.y));
+        break;
+      }
       case 'looted': this.out.stow(); break;
       case 'door': { const s = e.by === 'player' ? undefined : at(e.by); if (s) this.out.click(s); else this.out.click(); break; }
       default: break;

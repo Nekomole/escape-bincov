@@ -40,6 +40,20 @@ try {
         report.checks.push({ viewport: size, view: name, status: 'passed' });
         console.log(`PASS ${size} ${name}`);
       };
+      /** The page toast as a storage conflict shows it during a raid (fixture: text and opacity set directly), measured, then hidden. */
+      const toastBox = () => page.evaluate(() => {
+        const t = document.getElementById('toast'); t.textContent = '另一个窗口已更新存档，本页已停止操作。请导出需要保留的进度，再刷新本页。';
+        t.style.transition = 'none'; t.style.opacity = '1'; const r = t.getBoundingClientRect(); t.style.opacity = '0'; t.style.transition = '';
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      });
+      const box = selector => page.locator(selector).evaluate(el => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; });
+      const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      /** Text in the tab page below 12 px, or in the pixel face off its native 16 / 32 px, or in a monospace face (ui-tokens.css roles). */
+      const typeRoles = () => page.locator('#ui .panel.hideout').evaluate(el => [...el.querySelectorAll('*')]
+        .filter(n => n.getBoundingClientRect().width && [...n.childNodes].some(c => c.nodeType === 3 && c.textContent.trim()))
+        .map(n => { const cs = getComputedStyle(n); return { face: cs.fontFamily.split(',')[0].replace(/["']/g, ''), size: parseFloat(cs.fontSize), text: n.textContent.trim().slice(0, 12) }; })
+        .filter(x => x.size < 11.95 || /Consolas|mono/i.test(x.face) || (x.face === 'Bincov Text' && x.size !== 16 && x.size !== 32)));
+      const cellOf = selector => page.locator(selector).first().evaluate(el => Number(el.dataset.cell));
       await page.goto(pathToFileURL(resolve('dist/index.html')).href + '?test=1&entry=tabs');
       await action('enter').waitFor({ timeout: 60000 }); await page.waitForTimeout(200);
       await shot('menu');
@@ -56,7 +70,14 @@ try {
       assert.equal(await bandage.getAttribute('aria-pressed'), 'true');
       assert.equal(await bandage.evaluate(el => el === document.activeElement), true, 'Selection loses keyboard focus');
       await shot('item');
-      for (const tab of ['arms', 'med', 'quests', 'home']) { await action('tab', tab).click(); await shot(tab); }
+      assert.deepEqual(await typeRoles(), [], 'gear: text below 12 px, pixel face off 16/32 px or a monospace face');
+      for (const tab of ['arms', 'med', 'quests', 'home']) {
+        await action('tab', tab).click(); await shot(tab);
+        assert.deepEqual(await typeRoles(), [], `${tab}: text below 12 px, pixel face off 16/32 px or a monospace face`);
+      }
+      // The shop grids grow with the window (54 px before #163 batch 2 at every size).
+      await action('tab', 'arms').click();
+      assert.ok(await cellOf('[data-grid="merchant"]') >= (viewport.width >= 1920 ? 64 : 54), 'Shop grid does not grow with the window');
       // All hideout tabs must keep their working area above the departure controls.
       for (const tab of ['gear', 'arms', 'med', 'quests', 'home']) {
         await action('tab', tab).click();
@@ -117,9 +138,17 @@ try {
       assert.match(combined, /流血.*污染 (4[6-9]|50)%/);
       // The camera eases onto the placed player and every rebuild fades in from black (0.45 s).
       await page.waitForTimeout(1500); await shot('raid');
+      // A page toast during a desktop raid sits above the key hints instead of covering them.
+      const keys = await box('.coast-sample .cs-keys'), raidToast = await toastBox();
+      assert.equal(meets(raidToast, keys), false, `Page toast covers the key hints: ${JSON.stringify({ raidToast, keys })}`);
       // Tab opens the bag only while the raid runs (a stall pause resumed after the deploy would swallow it).
       await running(page);
       await page.keyboard.press('Tab'); await waitPanel(page, 'inventory'); await shot('inventory');
+      assert.equal(await cellOf('.coast-sample [data-panel] [data-grid="bag"]'), viewport.height >= 1000 ? 72 : 54, 'Raid bag cell for this window');
+      // ... and above the docked bag (the host measures the panel every four frames).
+      await frames(page, 6);
+      const bag = await box('.coast-sample [data-panel]'), bagToast = await toastBox();
+      assert.ok(bagToast.bottom <= bag.top, `Page toast covers the docked bag: ${JSON.stringify({ bagToast, bag })}`);
       const raidBandage = page.locator('.coast-sample [data-panel] [data-source="bag"][aria-label^="密封绷带"]');
       await raidBandage.click(); await page.locator('.coast-sample [data-do="inv-use"]').waitFor(); await shot('inventory-item');
       const bandages = () => page.evaluate(() => window.__bincov.app.loadout.bag.items.filter(i => i.id === 'bandage').reduce((n, i) => n + i.qty, 0));
@@ -142,6 +171,9 @@ try {
       assert.equal(await page.locator('.coast-sample [data-time]').textContent(), timer, 'Pause changes the displayed clock');
       await page.locator('.coast-sample [data-do="abandon"]').click(); await page.locator('.coast-sample [data-do="abandon-yes"]').waitFor(); await shot('abandon');
       await page.locator('.coast-sample [data-do="abandon-yes"]').click(); await action('return').waitFor({ timeout: 30000 }); await shot('result');
+      // The result page fills the window like the title instead of a 960×540 box in a dark frame.
+      const frame = await box('#frame');
+      assert.deepEqual([frame.left, frame.top, frame.right, frame.bottom], [0, 0, viewport.width, viewport.height], 'Result page does not fill the window');
     } finally { await context.close(); }
   }
   assert.deepEqual(report.errors, []); assert.deepEqual(report.externalRequests, []);

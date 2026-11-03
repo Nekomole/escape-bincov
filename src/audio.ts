@@ -349,6 +349,23 @@ export class SynthAudio {
     if (surface === 'door') { this.tone(240, 0.07, 0.075, 'triangle', 110, 0, spot); this.hiss(0.06, 0.09, 600, 0, spot); this.tone(520, 0.025, 0.03, 'square', 300, 0.01, spot); return; }
     this.tone(820, 0.035, 0.06, 'square', 260, 0, spot); this.hiss(0.05, 0.16, 1400, 0, spot);
   }
+  /**
+   * A dragon's breath burst (special-rounds.ts): a deep thump under a muffled roar, a bright snap on top and a crackling
+   * tail. The tail is decorative; the thump, roar and snap are the burst itself.
+   */
+  blast(spot?: Spot): void {
+    this.tone(96, 0.55, 0.5, 'sine', 26, 0, spot);
+    this.tone(170, 0.22, 0.22, 'triangle', 42, 0, spot);
+    this.hiss(0.55, 0.85, 50, 0, spot, false, 900);
+    this.hiss(0.16, 0.4, 1300, 0, spot);
+    this.hiss(0.4, 0.14, 2400, 0.12, spot, true);
+    this.hiss(0.05, 0.12, 3000, 0.3, spot, true);
+    this.hiss(0.04, 0.1, 3600, 0.43, spot, true);
+  }
+  /** The roar of a dragon's breath shell leaving the barrel, over the shotgun's own report. */
+  flame(spot?: Spot): void { this.hiss(0.42, 0.36, 480, 0.01, spot, false, 2600); this.tone(230, 0.3, 0.05, 'sawtooth', 110, 0.02, spot, true); }
+  /** One crackle of a ground fire: quiet and decorative, a little different each time. */
+  crackle(spot?: Spot): void { this.hiss(0.03 + Math.random() * 0.03, 0.08 + Math.random() * 0.06, 2000 + Math.random() * 1800, 0, spot, true); }
   /** Trigger on an empty chamber. */
   dry(): void { this.tone(1500, 0.022, 0.05, 'square', 1100); this.tone(320, 0.03, 0.04, 'triangle', 200, 0.012); }
   /** One heartbeat (two low thumps), for very low health. */
@@ -366,6 +383,18 @@ export class SynthAudio {
     this.tone(870, 0.16, 0.06, 'sine');
     this.tone(650, 0.19, 0.06, 'sine', 650, 0.25);
     this.hiss(0.2, 0.08, 1200, 0.5);
+  }
+  /**
+   * The market freezer's two knocks (#83): two dull thuds 0.42 s apart. A hint only: the subtitle and the recall carry
+   * the whole line, so a muted game loses nothing.
+   */
+  knocks(spot?: Spot): void {
+    for (const at of [0, 0.42]) { this.tone(96, 0.14, 0.22, 'triangle', 44, at, spot); this.hiss(0.08, 0.18, 50, at, spot, false, 380); }
+  }
+  /** The call from the switch room (#83): a far, muffled voice that rises and breaks off twice; its words are subtitled. */
+  call(spot?: Spot): void {
+    this.tone(196, 0.5, 0.06, 'triangle', 262, 0, spot); this.hiss(0.46, 0.05, 260, 0, spot, false, 850);
+    this.tone(233, 0.62, 0.055, 'triangle', 165, 0.62, spot); this.hiss(0.56, 0.045, 260, 0.62, spot, false, 850);
   }
   death(): void { this.tone(170, 1.5, 0.18, 'triangle', 24); this.hiss(0.8, 0.22, 100); }
   extract(): void { [330, 440, 550, 660].forEach((note, i) => this.tone(note, 0.55, 0.075, 'triangle', note, i * 0.17)); }

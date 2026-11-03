@@ -8,6 +8,8 @@ import { resolveExpansionWorld } from '../expansion-worlds';
 import type { SessionState } from '../session';
 import type { PublishedView } from '../raid-runtime/contract';
 import { WORLD } from '../world';
+import { STORY_CABINET, STORY_WORLD } from '../story';
+import { MARKET_ANCHORS } from '../market-world';
 import { esc } from '../html';
 
 
@@ -30,7 +32,7 @@ export function mapPanelHtml(session: SessionState, batch: PublishedView, view: 
 
 interface Box { x0: number; y0: number; x1: number; y1: number }
 /** Where each label went (null: dropped for lack of space) and the markers they avoid, for the overlap checks. */
-export interface MapLabel { name: string; kind: 'exit' | 'zone' | 'room'; box: Box | null }
+export interface MapLabel { name: string; kind: 'exit' | 'story' | 'zone' | 'room'; box: Box | null }
 export interface MapLayout { labels: MapLabel[]; markers: Box[] }
 
 export function drawMap(canvas: HTMLCanvasElement, session: SessionState, batch: PublishedView, view: string, touch: boolean, selectedExit = ''): MapLayout {
@@ -58,13 +60,16 @@ export function drawMap(canvas: HTMLCanvasElement, session: SessionState, batch:
   const current = view === batch.stamp.world.mapId, exits = current ? batch.map.exits : [];
   const p = current ? batch.frame.player : null;
   for (const e of exits) { g.strokeStyle = '#d7ed90'; g.lineWidth = 2 * k; g.strokeRect(X(e.at.x) - 6 * k, Y(e.at.y) - 6 * k, 12 * k, 12 * k); }
+  // The market story (#83): the tool cabinet the repair list names, on the outdoor map of the market world only.
+  const cabinet = raid?.worldVersion === STORY_WORLD && view === 'coast' ? MARKET_ANCHORS[STORY_CABINET] : null;
+  if (cabinet) { g.fillStyle = '#e2b45c'; g.save(); g.translate(X(cabinet.x), Y(cabinet.y)); g.rotate(Math.PI / 4); g.fillRect(-4 * k, -4 * k, 8 * k, 8 * k); g.restore(); }
   if (p) { g.fillStyle = '#fff'; g.beginPath(); g.arc(X(p.x), Y(p.y), 4 * k, 0, Math.PI * 2); g.fill(); }
   // Labels go last and never cover each other, the exit and stair squares or the player dot. Each tries a few spots around its
   // anchor; when none is free an exit is still drawn above its marker and a district or room name is dropped.
   // Priority: the chosen exit, other exits, districts, rooms.
   const square = (x: number, y: number, r: number): Box => ({ x0: x - r, y0: y - r, x1: x + r, y1: y + r });
   const taken = [...exits.map(e => square(X(e.at.x), Y(e.at.y), 7 * k)), ...(definition?.entries ?? []).map(e => square(X(e.at.x), Y(e.at.y), 4 * k)),
-    ...(p ? [square(X(p.x), Y(p.y), 5 * k)] : [])];
+    ...(cabinet ? [square(X(cabinet.x), Y(cabinet.y), 6 * k)] : []), ...(p ? [square(X(p.x), Y(p.y), 5 * k)] : [])];
   const markers = [...taken], layout: MapLabel[] = [];
   const free = (b: Box) => !taken.some(o => b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1);
   // `clear` is the half-size of a marker at (x, y) that the label must sit around rather than on.
@@ -87,6 +92,7 @@ export function drawMap(canvas: HTMLCanvasElement, session: SessionState, batch:
   };
   [...exits].sort((a, b) => Number(b.name === selectedExit) - Number(a.name === selectedExit))
     .forEach(e => label(e.name, X(e.at.x), Y(e.at.y), '#d7ed90', 'exit', 7 * k));
+  if (cabinet) label('工具柜', X(cabinet.x), Y(cabinet.y), '#e2b45c', 'story', 6 * k);
   map.zones.forEach(z => label(z.name, X(z.x + z.w / 2), Y(z.y + z.h / 2), '#f0e4b8', 'zone'));
   definition?.regions?.forEach(r => label(r.name, X(r.x + r.w / 2), Y(r.y + r.h / 2), '#e0dabb', 'room'));
   return { labels: layout, markers };
