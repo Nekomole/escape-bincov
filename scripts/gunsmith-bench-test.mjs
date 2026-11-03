@@ -125,8 +125,12 @@ try {
     // with the preview PNG channel by channel. #28 M3-04 adds Sol's wave-one records and M3-08 wave two's, each against
     // its 1x preview, and the bare side views (the ground and the HUD card) where Sol drew one. M3-12 redrew the
     // magazines (M3-W3): a picture with one is compared outside the region each redrawn image changed, at the same width;
-    // the new magazines' layouts are checked against Sol's M3-W3 records in tests/gunsmith-art.test.ts.
-    const { redrawn } = JSON.parse(await readFile('tests/fixtures/gunsmith-m3-w3-redrawn.json', 'utf8'));
+    // the new magazines' layouts are checked against Sol's M3-W3 records in tests/gunsmith-art.test.ts. Sol's SVD joint
+    // repair (#80, svd-joint) changed 70 single pixels of the SVD receivers: those pixels are left out as well.
+    const { redrawn: magazines } = JSON.parse(await readFile('tests/fixtures/gunsmith-m3-w3-redrawn.json', 'utf8'));
+    const { redrawn: joints } = JSON.parse(await readFile('tests/fixtures/gunsmith-svd-joint-redrawn.json', 'utf8'));
+    const redrawn = Object.fromEntries([...new Set([...Object.keys(magazines), ...Object.keys(joints)])]
+      .map(key => [key, [...magazines[key] ? [magazines[key]] : [], ...joints[key] ?? []]]));
     const { assemblies } = JSON.parse(await readFile('tests/fixtures/gunsmith-assemblies.json', 'utf8'));
     const cases = await Promise.all(assemblies.map(async a => ({ name: `${a.gun}-${a.configuration}-${a.code}`, gun: a.gun, code: a.code,
       parts: CONFIGS[a.gun][a.configuration](), png: (await readFile(a.file)).toString('base64') })));
@@ -159,7 +163,7 @@ try {
         const canvas = layout && art.draw(layout);
         if (!canvas) { out.push(`${c.name}: not drawn`); continue; }
         const img = new Image(); img.src = `data:image/png;base64,${c.png}`; await img.decode();
-        const masks = layout.layers.filter(l => redrawn[l.key]).map(l => { const [x, y, w, h] = redrawn[l.key]; return [l.x + x, l.y + y, w, h]; });
+        const masks = layout.layers.flatMap(l => (redrawn[l.key] ?? []).map(([x, y, w, h]) => [l.x + x, l.y + y, w, h]));
         if (img.width !== canvas.width || (!masks.length && img.height !== canvas.height)) { out.push(`${c.name}: ${canvas.width}x${canvas.height}, preview ${img.width}x${img.height}`); continue; }
         const ref = document.createElement('canvas'); ref.width = img.width; ref.height = img.height;
         const rc = ref.getContext('2d'); rc.drawImage(img, 0, 0);
@@ -302,10 +306,11 @@ try {
     assert.match(await bench('.gs-sheet').innerText(), /轻型远距镜/);
     await shot('09-phone-844x390-sheet');
     await tap(bench('.gs-sheet [data-gs="sheet"]')); assert.equal(await bench('.gs-sheet').count(), 0);
-    // Turning the phone keeps the preview and the page.
-    await page.setViewportSize({ width: 390, height: 844 }); await bench('.gs.gs-compact').waitFor();
+    // Turning the phone keeps the preview and the page. The yard repaints the panel in its resize handler (marking it
+    // .portrait); measure after that repaint, not the frame between the new viewport and the resize event.
+    await page.setViewportSize({ width: 390, height: 844 }); await yard('.modal.k-gunsmith.portrait .gs.gs-compact').waitFor();
     assert.match(await bench('.gs-sumbtn').innerText(), /待装 1/); await phoneFits();
-    await page.setViewportSize({ width: 844, height: 390 });
+    await page.setViewportSize({ width: 844, height: 390 }); await yard('.modal.k-gunsmith:not(.portrait) .gs.gs-compact').waitFor();
     assert.equal((await equipped()).gun.parts.length, 0, 'nothing written yet');
     await tap(bench('[data-gs="confirm"]'));
     await page.waitForFunction(() => window.__bincov.hideoutRuntime.snapshot().profile.equipment.gun.parts.length === 1);
@@ -544,6 +549,39 @@ try {
     assert.deepEqual([moved.y + 1, moved.x + 1], [Number(at[1]), Number(at[2])], 'it lies where the bar said');
     assert.notDeepEqual([moved.x, moved.y], [g17.x, g17.y]);
     return `G17 (${g17.x}, ${g17.y}) → (${moved.x}, ${moved.y})`;
+  });
+
+  await step('B11-factory-magazine-out-and-back', async () => {
+    // #28 M4-07: the M4A1 in hand loses its factory magazine at the mag position's 不装弹匣 card; the bar names it, the
+    // gun is a row shorter and holds no rounds; confirmed, the magazine and the rounds lie in the stash, the weapon slot
+    // says 没装弹匣 and the player cannot deploy. The 原厂弹匣 card puts it back.
+    await open(); await openFromSlot();
+    await pos('gun/mag/0').click(); await part('empty').click();
+    await bench('[data-gs="pos"][data-arg="gun/mag/0"].changed').waitFor();
+    assert.match(await pos('gun/mag/0').innerText(), /没装/);
+    const bar = await bench('.gs-foot').innerText();
+    assert.match(bar, /M4A1 原厂弹匣/); assert.match(await bench(".gs-head").innerText(), /4 × 2 → 4 × 1/);
+    await fits(); await shot('11-desktop-1280x720-mag-out');
+    const rounds = async () => (await snapshot()).profile.stash.items.filter(i => i.id === 'ammoR').reduce((n, i) => n + i.qty, 0);
+    const before = await rounds();
+    await bench('[data-gs="confirm"]').click();
+    await page.waitForFunction(() => window.__bincov.hideoutRuntime.snapshot().profile.equipment.gun?.magOut === true);
+    let p = (await snapshot()).profile;
+    assert.equal(p.equipment.ammo, 0);
+    assert.ok(p.stash.items.some(i => i.uid === `mag-${GUN}` && i.id === 'mb4a1-mag'), 'the magazine lies in the stash');
+    assert.equal(await rounds(), before + 28, 'the rounds went with it');
+    await yard('.modal.k-gunsmith .phead [data-act="close"]').click(); await yard('.panel.k-gear').waitFor();
+    assert.match(await yard('[data-slot="weapon"]').innerText(), /没装弹匣/);
+    await page.evaluate(() => Promise.all(document.querySelector('#station-yard').shadowRoot.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))));
+    await shot('11-desktop-1280x720-gear-no-mag');
+    // Back in from the factory card: the gun is as it was.
+    await yard(`[data-act="gunsmith:${GUN}"]`).click(); await bench('.gs').waitFor(); await pos('gun/mag/0').click(); await part('').click();
+    await bench('[data-gs="confirm"]').click();
+    await page.waitForFunction(() => !('magOut' in window.__bincov.hideoutRuntime.snapshot().profile.equipment.gun));
+    p = (await snapshot()).profile;
+    assert.ok(!p.stash.items.some(i => i.id === 'mb4a1-mag'), 'the magazine went back on');
+    assert.deepEqual(p.equipment.gun, { parts: [], devices: { laser: false, light: false } });
+    return `M4A1 magazine out (28 rounds to the stash) and back`;
   });
 
   await step('B5-desktop-1920x1080', async () => {

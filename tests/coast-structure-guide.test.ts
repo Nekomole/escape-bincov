@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createSessionState, SaveSession } from '../src/session';
 import { CoastRaidRuntime, emptyIntent } from '../src/raid-runtime/runtime';
 import { createRuntimeTestDriver } from '../src/raid-runtime/test-support';
-import { knownDoor, knownStructurePoint, occupiedStructure, structureContains } from '../src/coast-view/structure-guide';
+import { knownDoor, knownStructurePoint, occupiedStructure, stairLabelBox, stairLabelPlace, structureContains } from '../src/coast-view/structure-guide';
 
 function fixture() {
   const state = createSessionState(), data = new Map<string, string>();
@@ -51,4 +51,37 @@ test('unknown overlapping rooms keep static cues covered outside the occupied bu
   const overlapped = { ...map, regions: [...map.regions, { ...region, id: 'hidden-overlap' }] };
   assert.equal(knownStructurePoint(overlapped, point, { [region.id]: true }, null), false);
   assert.equal(knownStructurePoint(overlapped, point, { [region.id]: true, 'hidden-overlap': true }, null), true);
+});
+
+// The ground-floor up stair (cell 17,8) as drawn: 32x40 from 8 px into the cell above. Its label box is 60x18 (the sprite).
+const art = { x: 544, y: 248, w: 32, h: 40 }, W = 60, H = 18, A = ['below', 'above', 'left', 'right'] as const;
+const hit = (a: { x: number; y: number; w: number; h: number }, b: typeof a) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+test('a stair label rests just under its stairs and every other side stays next to them', () => {
+  assert.deepEqual(stairLabelBox(art, W, H, 'below'), { x: 530, y: 294, w: W, h: H }, 'the resting place: anchor (at.x, at.y + 22) as before');
+  assert.deepEqual(stairLabelBox(art, W, H, 'above'), { x: 530, y: 228, w: W, h: H });
+  assert.deepEqual(stairLabelBox(art, W, H, 'left'), { x: 482, y: 259, w: W, h: H });
+  assert.deepEqual(stairLabelBox(art, W, H, 'right'), { x: 578, y: 259, w: W, h: H });
+  assert.deepEqual(stairLabelPlace(art, W, H, A, [], []), stairLabelBox(art, W, H, 'below'), 'nothing in the way: no move');
+});
+
+test('blocked under its stairs, a stair label goes over them, never down to the player (#26 F07/F11)', () => {
+  // Observed 2026-10-30: the player one cell south of the stairs, facing the east door; the old rule put the label at the
+  // feet (y 344), on the east door's mark and the way through it, 56 px from its stairs.
+  const body = { x: 546, y: 292, w: 28, h: 48 }, way = { x: 480, y: 320, w: 96, h: 32 }, glow = { x: 524, y: 276, w: 8, h: 76 };
+  const placed = stairLabelPlace(art, W, H, A, [body, way, glow], [{ x: 514, y: 322, w: 28, h: 28 }]);
+  assert.ok(hit(stairLabelBox(art, W, H, 'below'), body), 'positive control: the resting place covers the player');
+  assert.deepEqual(placed, stairLabelBox(art, W, H, 'above'));
+  for (const r of [body, way, glow]) assert.equal(hit(placed, r), false);
+});
+
+test('a covered player or faced-door cue outweighs any amount of soft overlap, and ties keep the earlier side', () => {
+  const body = { x: 545, y: 220, w: 95, h: 100 }; // covers under, over and right; the left side is clear of it
+  const soft = [{ x: 470, y: 250, w: 20, h: 20 }]; // a door mark under the left side only
+  assert.deepEqual(stairLabelPlace(art, W, H, A, [body], soft), stairLabelBox(art, W, H, 'left'), 'soft overlap beats covering the player');
+  const everywhere = [{ x: 400, y: 200, w: 300, h: 200 }];
+  assert.deepEqual(stairLabelPlace(art, W, H, A, everywhere, []), stairLabelBox(art, W, H, 'below'), 'all sides equal: the first');
+  const column = [{ x: 545, y: 220, w: 30, h: 100 }]; // under and over blocked, both sides clear
+  assert.deepEqual(stairLabelPlace(art, W, H, ['below', 'above', 'right', 'left'], column, []), stairLabelBox(art, W, H, 'right'), 'the order given picks the side');
+  assert.deepEqual(stairLabelPlace(art, W, H, A, column, []), stairLabelBox(art, W, H, 'left'));
 });

@@ -13,7 +13,10 @@ import { generateRun } from '../world';
 import { SaveSession, type SessionState, type ExpansionDraft, type ExpansionTransaction } from '../session';
 import { locateGun, planGunEdit, type GunEdit, type GunEditFault, type GunEditPlan, type GunEditPreview } from '../gunsmith/edit';
 import { PRESET_LIMIT, PRESET_NAME_MAX, defaultPresetName, presetName, validPreset, type GunPreset, type PresetNode } from '../gunsmith/presets';
+import { craftPremium, premiumLock, PREMIUM_REFUSALS } from '../gunsmith/premium';
 import { validPractice } from './training';
+import { storyView } from '../story';
+import { STORY_ENTRIES, storyDialogue, chooseStory, type StoryEntry, type StoryTopic } from '../story-dialogue';
 import type * as C from './contract';
 const ok = (): C.Result => ({ ok: true });
 const fail = (reason: C.FailReason, message = '操作未完成，请检查条件后重试。'): C.Result => ({ ok: false, reason, message });
@@ -294,6 +297,28 @@ export class RealHideoutRuntime implements C.HideoutRuntime {
     upgradeStash() { return this.transaction('stash-upgrade', d => D.upgradeStash(d.profile)); }
     claimRelief() { return this.transaction('relief', d => D.grantRelief(d.profile)); }
     submitQuest(id: string) { return this.transaction('quest', d => Object.hasOwn(D.QUESTS, id) && D.submitQuest(d.profile, id)); }
+    story() { return storyView(this.state.story, this.state.save); }
+    /** Ephemeral conversation cursor; replies advance only after the single-record transaction is durable. */
+    openStory(entry: StoryEntry = 'start'): C.StoryConversation | null {
+        if (this.guard(true, false, true) || !STORY_ENTRIES.includes(entry) || !storyDialogue(this.state.story, this.state.save, entry)) return null;
+        let topic: StoryTopic = entry;
+        return {
+            view: () => topic === 'exit' || this.guard(true, true, true) ? null : storyDialogue(this.state.story, this.state.save, topic),
+            close: () => { topic = 'exit'; },
+            choose: choice => {
+                const blocked = this.guard(); if (blocked) return blocked;
+                const preview = chooseStory(structuredClone(this.state.story), structuredClone(this.state.save), topic, choice);
+                if (!preview) return fail('stale');
+                if (!preview.changed) { topic = preview.topic; return ok(); }
+                const result = this.transaction(choice === 'submit' ? 'quest' : 'story', draft => {
+                    const next = chooseStory(draft.story, draft.profile, topic, choice);
+                    return !!next?.changed && next.topic === preview.topic;
+                });
+                if (result.ok) topic = preview.topic;
+                return result;
+            },
+        };
+    }
     facility(id: C.Facility): C.FacilityInfo {
         const s = this.snapshot(), level = s.base.facilities[id], cost = B.FACILITY_COSTS[id]?.[level];
         return { id, name: B.FACILITY_NAMES[id], level, maxLevel: 3, explanation: { rest: '提高生命与精神恢复速度，并缩短获得精力充沛所需的休息。', medical: '提高生命恢复和止血、镇痛、疲劳治疗速度。', training: '提高行动训练效率。在训练区实际走动，每满 120 秒获得一次练习收益。', workbench: '有限队列串行生产；领完一批，再为后续成品腾出位置。', blackmarket: '需要修好电源，并成功带回一颗普通黑珍珠。货单尚未开放。' }[id],
@@ -313,6 +338,14 @@ export class RealHideoutRuntime implements C.HideoutRuntime {
             const r = RECIPES[recipe], b = d.expansion.base;
             if (b.facilities.workbench < r.level || b.facilities.medical < r.medical || b.queue.length >= b.facilities.workbench) return fail('locked');
             return d.profile.cash < r.cash ? fail('funds') : B.enqueueProduction(d.profile, d.expansion, recipe) || fail('materials');
+        });
+    }
+    /** 老栓精工 (#28 M4-09): make premium part `id` now from a base part, a blank and its price; one write or none. */
+    craftPremium(id: string): C.Result {
+        const blocked = this.guard(); if (blocked) return blocked;
+        return this.transaction('premium', d => {
+            const refusal = craftPremium(d.profile, d.expansion, id);
+            return !refusal ? true : fail(refusal, refusal === 'locked' ? premiumLock(d.profile, d.expansion)! : PREMIUM_REFUSALS[refusal]);
         });
     }
     cancel(batchId: string) { return this.transaction('cancel', d => d.expansion.base.queue.findIndex(b => b.id === batchId) <= 0 ? fail('rule') : B.cancelProduction(d.profile, d.expansion, batchId) || fail('space')); }
@@ -429,13 +462,15 @@ export class RealHideoutRuntime implements C.HideoutRuntime {
             + (weapon.ammo ? D.ITEMS[weapon.ammo].weight * p.equipment.ammo : 0) + (this.state.expansion?.charm ? D.ITEMS[this.state.expansion.charm.id].weight : 0);
         return { warnings: [...departureWarnings(s.profile), ...(weight > s.body.carry ? ['携行重量超过当前负重'] : []), ...(s.body.hp < s.body.hpMax ? ['生命尚未恢复'] : [])], weight, carry: s.body.carry };
     }
-    deploy(req: { world: C.RunWorld; seed: string; mallLayout?: 1 | 2 | 3 | 4 }): C.Result & { runId?: string } {
+    deploy(req: { world: C.RunWorld; seed: string; mallLayout?: 1 | 2 | 3 | 4; marketStory?: boolean }): C.Result & { runId?: string } {
         const blocked = this.guard(); if (blocked) return blocked;
         if (!req || !['coast', 'buildings', 'mall'].includes(req.world) || typeof req.seed !== 'string' || req.seed.length > 200) return fail('rule');
-        if (D.stashOverflow(this.state.save.stash).length) return fail('rule', D.OVERFLOW_BLOCKS_DEPLOY);
+        if (req.marketStory !== undefined && typeof req.marketStory !== 'boolean' || req.marketStory && req.world !== 'buildings') return fail('rule');
+        const stop = D.deployBlocker(this.state.save);
+        if (stop) return fail('rule', stop);
         if (this.samples.length) { const flushed = this.transaction('checkpoint', () => true, true); if (!flushed.ok) return flushed; }
         const seed = generateRun(req.seed.trim() || this.now()).seed;
-        if (!this.saves.beginRun(seed, req.world === 'mall' ? 'mall' : req.world === 'buildings', { mallLayout: req.mallLayout })) return this.failed('deploy');
+        if (!this.saves.beginRun(seed, req.world === 'mall' ? 'mall' : req.world === 'buildings', { mallLayout: req.mallLayout, marketStory: req.marketStory })) return this.failed('deploy');
         const completed = this.complete('deploy', () => { this.preparedRun = this.state.save.activeRun!.runId!; this.arrival = null; this.setActivity(false); });
         return completed.ok ? { ok: true, runId: this.preparedRun! } : completed;
     }
@@ -477,7 +512,7 @@ export class RealHideoutRuntime implements C.HideoutRuntime {
         const rejected = (reason: Shop.CartRejection) => fail(reason, Shop.cartRejectionMessage[reason]);
         return {
             view: () => structuredClone({ merchant, ...D.MERCHANTS[merchant], catalog: cart.catalog, buy: cart.buy, sell: cart.sell, stash: cart.stash, totals: Shop.cartTotals(cart), dirty: Shop.cartDirty(cart), stale: stale(), warnings: warnings(), placement: 'automatic-stash',
-                browse: { ...browse, pages: Shop.catalogPage(this.state.save, merchant, true, browse).pages, kinds: Shop.stockKinds(merchant, true) } } as const),
+                browse: { ...browse, pages: Shop.catalogPage(this.state.save, merchant, true, browse).pages, kinds: Shop.stockKinds(merchant, this.state.save, true) } } as const),
             placementError: (from, to, uid, x, y) => stale() ? Shop.cartRejectionMessage.stale : validSource(from) && validSource(to) ? Shop.shopPlacementError(cart, from, to, uid, x, y) : '无效容器。',
             place: (from, to, uid, x, y) => {
                 const blocked = this.guard(); if (blocked) return blocked;
@@ -500,7 +535,7 @@ export class RealHideoutRuntime implements C.HideoutRuntime {
             reset: () => { if (!this.guard()) { cart = Shop.createCart(this.state.save, merchant, true, browse); confirmation = null; } },
             browse: view => {
                 // Only the catalog changes: its packs are templates (buying copies one), so a new page loses nothing.
-                const kinds: string[] = ['all', ...Shop.stockKinds(merchant, true)];
+                const kinds: string[] = ['all', ...Shop.stockKinds(merchant, this.state.save, true)];
                 const asked: Shop.ShopBrowse = { kind: kinds.includes(view?.kind) ? view.kind : 'all', fits: view?.fits === true, page: Number.isInteger(view?.page) ? view.page : 0 };
                 const page = Shop.catalogPage(this.state.save, merchant, true, asked);
                 cart.catalog = page.catalog; browse = { ...asked, page: page.page };

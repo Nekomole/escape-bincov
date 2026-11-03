@@ -42,13 +42,20 @@ async function saveReport() { await writeFile(join(out, smoke ? 'browser-smoke.j
  * The seed's original records for the default area, from the game's own generator (tsx in a child process): the
  * deployed three-map world must hold exactly these item amounts. Crates merge repeated stacks, so stacks are not records.
  */
-function seedLoot(seed) {
-  const code = `import('./src/building-world.ts').then(m => { const c = m.buildingRunConfig(${Number(seed)}), all = [...c.loot, ...c.containers.flatMap(x => x.items)], amounts = {};
+/**
+ * A new street raid is the market story world (#83): its 60 records for the profile owned just before deployment, which
+ * decides the tool cabinet's repair shortfall. `profile` is that save, read from the page before the deploy click.
+ */
+function seedLoot(seed, profile) {
+  const code = `let input = ''; process.stdin.on('data', c => input += c).on('end', () => import('./src/market-world.ts').then(m => {
+    const c = m.marketRunConfig(${Number(seed)}, JSON.parse(input)), all = [...c.loot, ...c.containers.flatMap(x => x.items)], amounts = {};
     for (const i of all) amounts[i.id] = (amounts[i.id] ?? 0) + i.qty;
-    console.log(JSON.stringify({ records: all.length, crates: c.containers.length, amounts })); })`;
-  return JSON.parse(execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], { cwd: root, encoding: 'utf8' }));
+    console.log(JSON.stringify({ records: all.length, crates: c.containers.length, amounts })); }))`;
+  return JSON.parse(execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], { cwd: root, encoding: 'utf8', input: JSON.stringify(profile) }));
 }
 const sorted = amounts => Object.fromEntries(Object.entries(amounts).sort(([a], [b]) => a.localeCompare(b)));
+/** The save as it stood just before the seeded deployment (seedLoot's input for the same world later). */
+let deployedProfile = null;
 
 async function suite(viewport) {
   const label = `${viewport.width}x${viewport.height}`;
@@ -302,8 +309,9 @@ async function suite(viewport) {
       return { purchasedRounds: 12, charged: 84, nativeDragCell: [5, 4], safeBandages: bandage.qty };
     });
     await step('seeded deployment: 25 enemies and 60 original loot entries across ground and crates', async () => {
+      const owned = deployedProfile = await page.evaluate(() => structuredClone(window.__bincov.app.save));
       await deploy(42);
-      const current = await run(), expected = seedLoot(42);
+      const current = await run(), expected = seedLoot(42, owned);
       assert.equal(current.enemies, 25); assert.equal(current.alive, 25); assert.equal(expected.records, 60);
       assert.deepEqual(sorted(current.amounts), sorted(expected.amounts), 'every original record is on the ground or in a crate, across the three maps');
       assert.equal(current.crates, expected.crates); assert.ok(current.crates > 0 && current.crates <= 10);
@@ -343,7 +351,7 @@ async function suite(viewport) {
       assert.ok(salt, 'a rifle enemy on the street');
       // The world check first: seedLoot runs a tsx child process, which takes seconds on a slow runner, and the duel
       // (AI unfrozen) must last only the sampled five seconds.
-      const before = await run(), stocked = seedLoot(42).amounts;
+      const before = await run(), stocked = seedLoot(42, deployedProfile).amounts;
       assert.equal(before.alive, 25); assert.deepEqual(sorted(before.amounts), sorted(stocked), 'the world is still fully stocked');
       await drive(page, 'freezeAI', false);
       record.fps = await page.evaluate(() => new Promise(resolveSample => {

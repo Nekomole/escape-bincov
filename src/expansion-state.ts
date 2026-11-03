@@ -1,5 +1,7 @@
 import * as D from './domain';
 import { archetype, actorArchetype, actorDefinition, initialTactics } from './enemy-archetypes';
+import { ARMED_LEADERS, armoryGuns } from './enemy-armory';
+import { validFit } from './gunsmith/presets';
 import { RECOVERY_POSTS } from './enemy-recovery';
 import { BLOCKADE_POSTS } from './enemy-blockade';
 import { perkLimitBonus, perkModifiers, validPerkSelection, BREATH_MAX, CRIT_SOURCE_IDS, FOCUS_CRIT, type CritSnapshot, type CritSourceId, type PerkId, type PerkModifiers } from './perks';
@@ -331,7 +333,7 @@ export function validateExpansion(value: unknown, profile: D.SaveDataV1 | Profil
         for (const key of ['timer', 'cooldown', 'repath', 'alert'] as const) if (!finite(e[key], -10000, 10000)) fail();
         if (spec) {
             const t = e.tactics!;
-            exactKeys(t, ['version', 'squad', 'awareness', 'stance', 'warning', 'memory', 'phase', 'phaseLeft', 'lockedAim', 'magazine', 'reserve', 'signalUsed', 'equipment', 'supplies', 'killedBy', ...(t.version === 2 ? ['program'] : [])]);
+            exactKeys(t, ['version', 'squad', 'awareness', 'stance', 'warning', 'memory', 'phase', 'phaseLeft', 'lockedAim', 'magazine', 'reserve', 'signalUsed', 'equipment', 'supplies', 'killedBy', ...(Object.hasOwn(t, 'fit') ? ['fit'] : []), ...(t.version === 2 ? ['program'] : [])]);
             if (t.version === 2) {
                 if(!obj(t.program))fail();
                 if(t.program.kind==='affected') {
@@ -355,7 +357,10 @@ export function validateExpansion(value: unknown, profile: D.SaveDataV1 | Profil
                 || !['idle', 'warning', 'hostile', 'retreat'].includes(t.stance)
                 || !['idle', 'windup', 'release', 'recovery', 'reload'].includes(t.phase) || !finite(t.phaseLeft, 0, 10)
                 || !finite(t.lockedAim, -100, 100) || !whole(t.magazine, 0, spec.magazine) || !whole(t.reserve, 0, spec.reserve)
-                || typeof t.signalUsed !== 'boolean' || t.equipment !== initial.equipment
+                || typeof t.signalUsed !== 'boolean'
+                // The archetype's old gun (a raid from before #28 M4-02), or one of its ARMORY guns; a leader's parts only on one of those.
+                || (t.equipment !== initial.equipment && (initial.equipment === null || !(armoryGuns(e.id) as (string | null)[]).includes(t.equipment)))
+                || (Object.hasOwn(t, 'fit') && (!ARMED_LEADERS.has(e.id) || !(armoryGuns(e.id) as (string | null)[]).includes(t.equipment) || !validFit(t.equipment, t.fit)))
                 || !Array.isArray(t.supplies) || t.supplies.length > 4
                 || (e.hp > 0 ? t.killedBy !== null : t.killedBy !== 'player' && !raid.roster.some(r => r.uid === t.killedBy && r.uid !== e.uid))) fail();
             goods(t.supplies);
@@ -439,7 +444,7 @@ export function validateExpansion(value: unknown, profile: D.SaveDataV1 | Profil
         const post=RECOVERY_POSTS.find(post=>post.id===e.id);
         if(!leader||leader.id!=='recovery-leader'||order?.kind!=='recovery'||order.leader!==leader.uid
             ||order.crate!==p.crate||lt!.squad!==t!.squad||enemyMaps.get(leader.uid)!==mapId
-            ||world.id!=='coast-buildings-v1'||mapId!=='coast'||!post||e.home.x!==post.home.x||e.home.y!==post.home.y
+            ||!['coast-buildings-v1','coast-story-v1'].includes(world.id)||mapId!=='coast'||!post||e.home.x!==post.home.x||e.home.y!==post.home.y
             ||!cargo||cargo.mapId!==mapId||cargo.container.kind!=='crate'
             ||e.id==='recovery-leader'&&e.uid!==p.leader||cargoOwners.has(p.crate)&&cargoOwners.get(p.crate)!==p.leader)fail();
         cargoOwners.set(p.crate,p.leader);
@@ -457,7 +462,7 @@ export function validateExpansion(value: unknown, profile: D.SaveDataV1 | Profil
         const leader=enemies.get(p.leader),lt=leader?.tactics,order=lt?.version===2?lt.program:null;
         if(!leader||leader.id!=='blockade-sergeant'||order?.kind!=='blockade'||order.leader!==leader.uid)return fail();
         const post=BLOCKADE_POSTS.find(post=>post.id===e.id),mapId=enemyMaps.get(e.uid);
-        if(world.id!=='coast-buildings-v1'||mapId!=='coast'||enemyMaps.get(leader.uid)!==mapId||t!.squad!==lt!.squad
+        if(!['coast-buildings-v1','coast-story-v1'].includes(world.id)||mapId!=='coast'||enemyMaps.get(leader.uid)!==mapId||t!.squad!==lt!.squad
             ||!post||e.home.x!==post.home.x||e.home.y!==post.home.y||e.id==='blockade-sergeant'&&e.uid!==p.leader
             ||p.phase==='granted'&&!['granted','engaged'].includes(order.phase)||p.phase==='waiting'&&order.phase==='none'
             ||p.phase!=='engaged'&&p.since>order.since)fail();

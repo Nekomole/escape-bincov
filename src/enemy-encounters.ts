@@ -7,12 +7,13 @@ import { BLOCKADE_POSTS, BLOCKADE_SQUAD, installBlockadeProgram } from './enemy-
 import { FAUNA_SITES, FAUNA_SQUAD, installFaunaFood } from './enemy-fauna';
 import { AFFECTED_POSTS, AFFECTED_SQUAD } from './enemy-affected';
 import { installRecoveryProgram, RECOVERY_POSTS, RECOVERY_SQUAD } from './enemy-recovery';
+import { armEncounter } from './enemy-armory';
 
 /** Authored street encounter, away from every deployment, extraction and stair landing.
  * Replaces three, six on the market seed variant, or seven on the fauna variant before one deployment commit.
  * No extra population or RNG draws; fauna floor food comes from its carried supply budget. */
 export function installStreetEncounter(raid: LayeredRaid, world: WorldDefinition): void {
-    if (raid.elapsed !== 0 || ![2, 3].includes(raid.version) || world.id !== 'coast-buildings-v1') throw new Error('遭遇只能在新街区行动初始化。');
+    if (raid.elapsed !== 0 || ![2, 3].includes(raid.version) || !['coast-buildings-v1', 'coast-story-v1'].includes(world.id)) throw new Error('遭遇只能在新街区行动初始化。');
     const members: { id: ArchetypeId; x: number; y: number; squad: string; program?: EnemyProgram }[] = [
         { id: 'raider-melee', x: 20, y: 18, squad: 'street-salvage' }, { id: 'raider-gunner', x: 28, y: 22, squad: 'street-salvage' }, { id: 'raider-lookout', x: 25, y: 13, squad: 'street-salvage' },
     ];
@@ -42,7 +43,7 @@ export function installStreetEncounter(raid: LayeredRaid, world: WorldDefinition
         used.add(enemy.uid);
     }
     if (market) {
-        const crate = layer.containers.filter(c => c.kind === 'crate').sort((a,b) => separation(a, MARKET_STORES)-separation(b, MARKET_STORES) || a.id.localeCompare(b.id, 'en'))[0];
+        const crate = layer.containers.filter(c => c.kind === 'crate' && c.id !== 'ch01-sc-toolcab').sort((a,b) => separation(a, MARKET_STORES)-separation(b, MARKET_STORES) || a.id.localeCompare(b.id, 'en'))[0];
         if (!crate || !traversable({ definition: map, doors: layer.doors, highTide: true }, MARKET_STORES, 'body', 10)) throw new Error('据点缺少合法物资来源。');
         // Reposition one existing supply crate, preserving its identity, contents and economy.
         Object.assign(crate, MARKET_STORES);
@@ -50,6 +51,7 @@ export function installStreetEncounter(raid: LayeredRaid, world: WorldDefinition
     if (fauna) installFaunaFood(raid);
     if(raid.seed%5===3)installRecoveryProgram(raid);
     if(raid.seed%5===4)installBlockadeProgram(raid);
+    armEncounter(raid);
     raid.version = raid.version === 3 ? 5 : 4;
     raid.roster = Object.values(raid.maps).flatMap(m => m.enemies.map(e => ({ uid: e.uid, id: e.id })));
 }

@@ -1,6 +1,9 @@
 import * as D from './domain';
 import { getLegacyEnemyProfile } from './enemy-profile';
 import { archetype, enemyDefinition } from './enemy-archetypes';
+import { presetState } from './gunsmith/presets';
+import { PREMIUM_BLANK } from './gunsmith/premium';
+import { leaderBlank } from './enemy-armory';
 import { canDamageEnemy } from './enemy-relations';
 import { enemyDamageAfterArmor } from './enemy-defense';
 import { enemyPost } from './enemy-posts';
@@ -93,16 +96,20 @@ export function aimTarget(raid: LayeredRaid, world: WorldDefinition, reach: numb
     return enemiesOnRay(raid, mapId, ray, dx, dy, stop)[0]?.enemy.uid ?? null;
 }
 
-/** Actual damage and corpse ownership shared by ordinary and departing shots. */
+/**
+ * Actual damage and corpse ownership shared by ordinary and departing shots. `source.through`: the damage ignores
+ * armour (burning, special-rounds.ts).
+ */
 export function damageLayerEnemy(state: ExpansionState, mapId: string, enemy: EnemyState, amount: number, gun = true,
-    source: { owner: string; at: Point; incomingAngle?: number } = { owner: 'player', at: state.raid!.player }): void {
+    source: { owner: string; at: Point; incomingAngle?: number; through?: boolean } = { owner: 'player', at: state.raid!.player }): void {
     if (enemy.hp <= 0 || amount <= 0) return;
     if (source.owner !== 'player') {
         const attacker = [...state.raid!.maps[mapId].enemies, ...state.raid!.pursuits.filter(p => p.sourceMap === mapId).map(p => p.enemy)]
             .find(e => e.uid === source.owner);
         if (!enemyRules(state.raid) || !attacker || !canDamageEnemy(attacker, enemy)) return;
     }
-    const raid = state.raid!, layer = raid.maps[mapId], actual = Math.min(enemy.hp, enemyDamageAfterArmor(enemy, source.at, amount, source.incomingAngle));
+    const raid = state.raid!, layer = raid.maps[mapId];
+    const actual = Math.min(enemy.hp, source.through ? amount : enemyDamageAfterArmor(enemy, source.at, amount, source.incomingAngle));
     enemy.hp -= actual;
     if (mapId === raid.currentMap) {
         const at = enemy.tactics ? source.at : raid.player;
@@ -128,11 +135,16 @@ export function damageLayerEnemy(state: ExpansionState, mapId: string, enemy: En
         ...(tactics.equipment ? [{ id: tactics.equipment, qty: 1 }] : []),
         ...(gunDef?.ammo && tactics.magazine + tactics.reserve > 0 ? [{ id: gunDef.ammo, qty: tactics.magazine + tactics.reserve }] : []),
         ...tactics.supplies,
+        // A leader's body may hold 老栓精工's material too (#28 M4-09).
+        ...leaderBlank(raid.seed, enemy.id, enemy.uid) ? [{ id: PREMIUM_BLANK, qty: 1 }] : [],
     ] : D.corpseLoot(raid.seed + raid.kills * 47, getLegacyEnemyProfile(enemy.id).corpseLootRolls, enemy.id === 'elite');
     const random = D.seededRandom(raid.rng);
+    const allocate = () => entityUid(raid, raid.nextEntity++);
     for (const drop of drops) {
-        if (D.addItem(inventory, drop.id, drop.qty, false, false, true, () => entityUid(raid, raid.nextEntity++))) throw new Error('尸体容器容量不足。');
+        if (D.addItem(inventory, drop.id, drop.qty, false, false, true, allocate)) throw new Error('尸体容器容量不足。');
         if (!tactics) { random(); random(); }
+        // A leader's gun keeps its parts (#28 M4-02): the same build, each part under a fresh uid of this raid.
+        if (tactics?.fit && drop.id === tactics.equipment) inventory.items.find(i => i.id === drop.id)!.gun = presetState(tactics.fit, allocate);
     }
     raid.rng = random.getState();
     if (raid.version >= 2 && !tactics) luckInventory(state, mapId, inventory, enemy);

@@ -4,6 +4,7 @@ import type { EnemyState } from './checkpoint';
 import { entityUid, newTraining, type ExpansionState, type LayeredRaid, type WorldDefinition } from './expansion-state';
 import { findLanding, type Cell, type SpaceDefinition } from './spatial';
 import { initialLuck } from './reputation-luck';
+import { PREMIUM_BLANK, PREMIUM_BLANKS } from './gunsmith/premium';
 
 const at = (x: number, y: number): Point => ({ x: (x + .5) * 32, y: (y + .5) * 32 });
 export function roomMap(id: string, cols: number, rows: number, name: string, floor: string): SpaceDefinition {
@@ -65,8 +66,7 @@ export function mapPresentation(map: SpaceDefinition): MapData {
 }
 
 /** One generation allocates the entire population and supplies across all maps. */
-export function initializeBuildingRaid(state: ExpansionState, loadout: D.RunLoadout, config: RunConfig): void {
-    const world = BUILDING_WORLD;
+export function initializeBuildingRaid(state: ExpansionState, loadout: D.RunLoadout, config: RunConfig, world = BUILDING_WORLD): void {
     const maps: LayeredRaid['maps'] = Object.fromEntries(Object.values(world.maps).map(m => [m.id, {
         doors: Object.fromEntries(m.doors.map(d => [d.id, false])), localTime: 0, enemies: [], loot: [], containers: [], bullets: [], noise: null,
     }]));
@@ -105,8 +105,8 @@ export function initializeBuildingRaid(state: ExpansionState, loadout: D.RunLoad
     initialLuck(state);
 }
 
-export function buildingRunConfig(seed: number | string): RunConfig {
-    const config = generateRun(seed), random = D.seededRandom(config.seed + 11939);
+export function buildingRunConfig(seed: number | string, source?: RunConfig): RunConfig {
+    const config = source ?? generateRun(seed), random = D.seededRandom(config.seed + 11939);
     const rare = ['strengthDose', 'constitutionDose', 'techniqueDose', 'luckyCharm', 'unluckyCharm', 'luckySachet', 'unluckySachet'];
     for (const entry of [...config.loot, ...config.containers.flatMap(c => c.items)]) {
         if (['sample', 'ledger', 'scrap', 'wire', 'fuse'].includes(entry.id)) continue;
@@ -126,5 +126,9 @@ export function buildingRunConfig(seed: number | string): RunConfig {
     for (const entry of config.loot) judge(entry, flooded(entry));
     // Crates take only spots that stay dry at high tide, so their records are never flooded.
     for (const item of config.containers.flatMap(c => c.items)) judge(item, false);
+    // 老栓精工 (#28 M4-09): now and then a valuable left at a flooded spot is a 精工件坯 instead, after the finds and on a
+    // stream of its own, so every other record stays as it was.
+    const blanks = D.seededRandom(config.seed + 52817);
+    for (const entry of config.loot) if (flooded(entry) && D.ITEMS[entry.id]?.kind === 'valuable' && blanks() < PREMIUM_BLANKS.flooded) { entry.id = PREMIUM_BLANK; entry.qty = 1; }
     return config;
 }

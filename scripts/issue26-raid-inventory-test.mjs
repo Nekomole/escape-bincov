@@ -224,6 +224,37 @@ const cases = [
     assert.equal(after.live.loadout.safe.items[0].uid, gun.uid); assert.equal(after.live.loadout.bag.items.length, 0);
     return { rollbackBytes: true, nestedGunPreserved: true, explicitActionRetryWrites: 1 };
   }],
+  ['quest-item-rings', async t => {
+    // Maintainer 2026-11-02 (qol.questMarks): quest items carry a green ring; a container's copies only while the player
+    // still holds fewer than the quest asks, carried ones until it is handed in. The repair quest asks for 3 scrap.
+    const crate = await t.fixture({
+      items: [item('box-scrap-pair', 'scrap', 2), item('box-wire', 'wire', 1, 1), item('box-watch', 'watch', 1, 2), item('box-scrap-one', 'scrap', 1, 3), item('box-sample', 'sample', 1, 4)],
+      bag: [item('own-scrap', 'scrap', 1)],
+    });
+    await t.open(crate);
+    const rings = () => t.page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.coast-sample [data-grid] .item')].map(el => [`${el.dataset.source}/${el.dataset.uid}`, el.classList.contains('need')])));
+    let r = await rings();
+    assert.deepEqual([r['container/box-scrap-pair'], r['container/box-scrap-one'], r['container/box-wire'], r['container/box-sample'], r['container/box-watch'], r['bag/own-scrap']], [true, true, true, true, false, true], '1 of 3 scrap held: the box rings its quest items');
+    const look = await t.page.locator(t.selector('container', 'box-wire')).evaluate(el => {
+      const s = getComputedStyle(el), flag = getComputedStyle(el, '::after');
+      return { border: s.borderTopColor, ring: s.boxShadow, flag: flag.borderLeftColor, label: el.getAttribute('aria-label') };
+    });
+    assert.equal(look.border, 'rgb(144, 194, 138)', 'green border from --ui-g'); assert.match(look.ring, /rgb\(144, 194, 138\).*inset|inset.*rgb\(144, 194, 138\)/);
+    assert.equal(look.flag, 'rgb(144, 194, 138)', 'corner flag, so the mark does not rely on colour alone'); assert.match(look.label, /任务需要/);
+    assert.notEqual(await t.page.locator(t.selector('container', 'box-watch')).evaluate(el => getComputedStyle(el).borderTopColor), 'rgb(144, 194, 138)');
+    assert.equal(await t.page.locator(t.selector('container', 'box-sample')).evaluate(el => getComputedStyle(el).borderTopColor), 'rgb(144, 194, 138)', 'the ring wins over the quest kind\'s own border');
+    await t.screenshot('quest-rings-short');
+    await t.page.locator(t.selector('container', 'box-scrap-pair')).dblclick(); await frames(t.page);
+    const s = await t.snapshot(); t.assertSynced(s);
+    assert.equal(s.live.loadout.bag.items.filter(i => i.id === 'scrap').reduce((n, i) => n + i.qty, 0), 3, 'three scrap carried');
+    r = await rings();
+    assert.equal(r['container/box-scrap-one'], false, 'enough held: the box copy goes plain');
+    assert.equal(r['container/box-wire'], true, 'wire still short');
+    const carried = s.live.loadout.bag.items.filter(i => i.id === 'scrap').map(i => r[`bag/${i.uid}`]);
+    assert.ok(carried.length && carried.every(Boolean), 'carried scrap keeps its ring');
+    await t.screenshot('quest-rings-enough');
+    return { carriedScrap: 3, boxScrapRinged: false };
+  }],
   ['pickup-once', async t => {
     const crate = await t.fixture({ items: [item('double-pickup', 'bandage', 2), item('button-pickup', 'pistol', 1, 1)] }); await t.open(crate);
     await t.page.locator(t.selector('container', 'double-pickup')).dblclick(); await frames(t.page);
@@ -406,7 +437,7 @@ const cases = [
 try {
   for (const entry of ['village']) for (const viewport of [{ width: 1280, height: 720 }, { width: 1920, height: 1080 }]) {
     for (const [name, test] of cases) {
-      if (viewport.width === 1920 && !['carried-inventory-commands', 'pickup-once', 'equip-gun-and-specific-rejection', 'equip-slot-drag-from-container-and-bag', 'equip-slot-select-then-tap', 'drag-swaps-and-invalid-overlap'].includes(name)) continue;
+      if (viewport.width === 1920 && !['carried-inventory-commands', 'quest-item-rings', 'pickup-once', 'equip-gun-and-specific-rejection', 'equip-slot-drag-from-container-and-bag', 'equip-slot-select-then-tap', 'drag-swaps-and-invalid-overlap'].includes(name)) continue;
       if (only && !only.test(`${entry}-${viewport.width}x${viewport.height}-${name}`)) continue;
       await runCase(entry, viewport, name, test);
     }

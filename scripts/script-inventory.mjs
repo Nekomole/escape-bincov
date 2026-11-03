@@ -11,6 +11,7 @@ const groups = [
     'check-catalog.mjs', 'script-inventory.mjs', 'source-graph.mjs', 'enemy-catalog-data.ts', 'resource-report-input.mjs', 'station-resource-args.mjs',
     'shop-touch-cases.mjs', 'station-acceptance-gates.mjs', 'enemy-mall-browser.mjs', 'enemy-browser-plan.mjs',
   ] },
+  { kind: 'diagnostic', reason: '#83 mk-a29 市场两条路线的真实时钟机器人：院子出击面板进新世界，按片段路点走正面或后勤路线，开工具柜取料（后勤路线先检查总闸），再到最近撤离点按住撤离；敌人 AI 正常，只读状态，不改世界或时钟。node --import tsx scripts/market-route-play.mjs --route=front|service --seed=N；结果是可达与计时参考，不代替真人试玩。', files: ['market-route-play.mjs'] },
   { kind: 'support', reason: '自然游玩工具共用的只读采样、真实准备及自动玩家策略；由现役 natural-play 和 CI 反例导入。', files: [
     'natural-play-state.mjs', 'natural-play-preparation.mjs', 'natural-play-policy.mjs',
   ] },
@@ -18,9 +19,12 @@ const groups = [
     'astra-r7-heap-graph.test.mjs', 'station-resource-probe.test.mjs',
   ] },
   { kind: 'tool', reason: '素材生成、导入或交付工具；会写源码或资产，不能当作只读测试执行。开工前检查输入清单、哈希、字体环境和输出。', files: [
-    'coast-import-assets.mjs', 'gunsmith-assets.mjs', 'mall-assets.mjs', 'opening-assets.mjs', 'station-assets.mjs', 'subset-font.py', 'build-coast-runtime.mjs',
+    'coast-import-assets.mjs', 'gunsmith-assets.mjs', 'mall-assets.mjs', 'opening-assets.mjs', 'station-assets.mjs', 'subset-font.py', 'site/subset-font.py', 'build-coast-runtime.mjs',
     'format.mjs', 'enemy-export-art.mjs', 'prepare-county-map.mjs', 'pack-coast-art.py',
   ] },
+  { kind: 'diagnostic', reason: '#28 M4-05 配装对比：每把枪搜出轻快、安静、稳定、大容量四类配装，比工作台七项和按游戏射击规则模拟的打倒时间、持续与走射命中（node --import tsx scripts/build-compare.ts）；模拟是写明的模型，不代表真人手感。', files: ['build-compare.ts'] },
+  { kind: 'support', reason: '#28 M4-05 配装搜索与占优比较；由 build-compare.ts 和 tests/gunsmith-balance.test.ts 导入，不是独立命令。', files: ['build-search.ts'] },
+  { kind: 'diagnostic', reason: '#28 M4-04 改枪经济二十局样本：在真实的出击、结算、任务、仓库和工作台代码上按固定习惯连打二十局（node --import tsx scripts/economy-sample.ts）；习惯与战斗模型是写明的假设，结果不代表真人手感或平衡结论。', files: ['economy-sample.ts'] },
   { kind: 'diagnostic', reason: '帧时、标题性能或确定性射击测量；参数见源码头部，独立运行并记录环境。本轮未重测这些性能工具，不把输出数值当作真人手感或 GPU 完成时间。', files: [
     'coast-sample-measure.mjs', 'title-performance.mjs', 'shooting-bench.ts',
   ] },

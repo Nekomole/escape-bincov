@@ -1,5 +1,5 @@
 /** Headless coastal raid. Rules transplanted from RaidScene at f144147; no renderer/DOM imports. */
-import { partsSignature } from '../gunsmith/signature';
+import { drawnParts, partsSignature } from '../gunsmith/signature';
 import * as D from '../domain';
 import { getLegacyEnemyProfile } from '../enemy-profile';
 import { actorArchetype, actorDefinition, enemyDefinition } from '../enemy-archetypes';
@@ -22,7 +22,8 @@ import { critMultiplier, critSources, type CritSnapshot } from '../perks';
 import { advanceBreath, breathChance, clearBreath, idleBreath } from '../breath';
 import { advancePursuits } from '../pursuit';
 import { advanceAim, coneOf, drawAim, driftOf, handlingOf, preciseHeld, recoil, turnAim, unsteadyAim, SWAY, type AimState, type Handling, type Motion } from '../shooting';
-import { GUNS, type GunClass } from '../gunsmith/catalog';
+import { ATTACHMENTS, GUNS, type GunClass } from '../gunsmith/catalog';
+import { presetIds } from '../gunsmith/presets';
 import { effectiveStats, laserHandling } from '../gunsmith/stats';
 import { buildOf, gunWeight } from '../gunsmith/instance';
 import { deviceParts, devicesOn, partOn, toggleDevice, type DeviceEffect, type DevicePart } from '../gunsmith/devices';
@@ -31,6 +32,10 @@ import { SaveSession, type SessionState, type ExpansionTransaction, type Mutatio
 import type { LootContainer, LootTransfer } from '../loot';
 import type { RaidRuntime, RaidIntent, PublishedView, WorldKey, MapDef, StampedEvent, ViewEventBody, Durability, WeaponLook, TargetRef, Interaction, HurtCause } from './contract';
 import { mapView, frameView, freeze, Revelation, bulletOwner, pointShown } from './presentation';
+import { DRAGON, FireField, roundFits, type RoundKind, type TracerColor } from '../special-rounds';
+import { STORY_WORLD, STORY_CABINET, STORY_RECALL, storyView, observeStory as recordStoryObservation, type StoryClue, type StoryCueId } from '../story';
+import { MARKET_ANCHORS } from '../market-world';
+import type { StorySourceRef, StorySource } from './contract';
 export const emptyIntent = (): RaidIntent => ({ move: { x: 0, y: 0, sprint: false }, aim: null, precise: false,
     firePressed: false, fireHeld: false, aimHeld: false, interactPressed: false, interactHeld: false, commands: [], selectTarget: null, source: 'mouse-keyboard' });
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -130,6 +135,22 @@ export class CoastRaidRuntime implements RaidRuntime {
     /** Remaining flight time for rounds born in this substep. Consumed before flight, never part of a checkpoint. */
     private newbornFlight: Map<string, number> | null = null;
     /**
+     * The special round the player's gun fires (special-rounds.ts), or null for its own ammunition; a kind the gun
+     * cannot load (roundFits) fires ordinary rounds. Step 1 sets it from the 试枪场 only. Runtime-only, never saved.
+     */
+    round: RoundKind | null = null;
+    /** The colour of the tracers the gun fires (special-rounds.ts TRACER_COLORS); runtime-only like `round`. */
+    tracerColor: TracerColor = 'red';
+    /**
+     * Special rounds in flight by bullet uid, each with the bodies its shot's bursts already struck (a body takes one
+     * burst per shot). Like newbornFlight never part of a checkpoint: a reload turns rounds in flight into ordinary ones.
+     */
+    private specials = new Map<string, { kind: RoundKind; color?: TracerColor; struck: Set<string> }>();
+    /** Dragon's breath pellets that landed during this substep's flight; they burst right after it (updateFire). */
+    private landed: { at: Point; struck: Set<string> }[] = [];
+    /** Ground fires and burning bodies on the current map (special-rounds.ts). Runtime-only; put out on a reload or layer change. */
+    readonly fire = new FireField();
+    /**
      * The loadout gun's effective numbers (gunsmith/stats.ts) and weight, for the instance `key` names: its uid, type,
      * installed parts and switches. The gun in hand is read several times a frame, so they are worked out once per
      * instance (docs/gunsmith/CONTRACTS.md, M1-05) and frozen, since every reader shares them. Never saved. The
@@ -205,7 +226,10 @@ export class CoastRaidRuntime implements RaidRuntime {
             // Start at the body: the normal segment collision cannot shoot through a wall beside a muzzle.
             const bullet: BulletState = { uid: this.allocateEntityUid(), x: enemy.x, y: enemy.y, rotation: angle,
                 vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, left: def.range, damage: def.damage, enemy: true, owner: enemy.uid };
-            this.bullets.push(bullet); this.shotEvent(enemy.uid, def.weapon, [bullet], [angle]);
+            // The gun it holds names the report (#28 M4-02); its numbers stay the archetype's (#152).
+            const held = enemy.tactics?.equipment, gun = held && D.isGun(held) ? { id: held, cls: GUNS[held].cls,
+                suppressed: presetIds(enemy.tactics!.fit ?? []).some(id => ATTACHMENTS[id]?.mods.suppressor === true) } : undefined;
+            this.bullets.push(bullet); this.shotEvent(enemy.uid, def.weapon, [bullet], [angle], gun);
         },
     };
     private checkpointAt = 0;
@@ -258,7 +282,7 @@ export class CoastRaidRuntime implements RaidRuntime {
             throw new Error('Resume or deploy a valid owned raid before creating Runtime.');
         this.layered = session.expansion?.raid ? structuredClone(session.expansion) : null;
         const world = this.layered?.raid?.worldVersion;
-        if (world && world !== 'coast-buildings-v1' && !isMallWorld(world))
+        if (world && world !== 'coast-buildings-v1' && world !== STORY_WORLD && !isMallWorld(world))
             throw new Error('Sample Runtime does not support this world.');
         this.config = this.layered ? (isMallWorld(world) ? mallRunConfig : buildingRunConfig)(this.layered.raid!.seed)
             : generateRun(session.checkpoint!.seed);
@@ -306,7 +330,7 @@ export class CoastRaidRuntime implements RaidRuntime {
     /** The gun in hand's type and configuration signature, for its picture (#28 M2-10); null with the knife or no gun. */
     get heldGun(): { id: string; sig: string } | null {
         const gun = this.knife ? null : D.equippedGun(this.session.loadout ?? this.terminalLoadout);
-        return gun ? { id: gun.id, sig: partsSignature(gun.parts) } : null;
+        return gun ? { id: gun.id, sig: partsSignature(drawnParts(gun)) } : null;
     }
     /** How the held weapon is drawn (heldLook). */
     get weaponLook(): WeaponLook { return heldLook(this.currentWeapon.id); }
@@ -571,6 +595,8 @@ export class CoastRaidRuntime implements RaidRuntime {
                         }
                         if (this.session.state === 'run' && !this.paused && !this.ending)
                             this.pull(this.overlay ? emptyIntent() : effective);
+                        if (this.canObserveStory('ch01-sc-freezer'))
+                            this.observeStory({ id: 'ch01-sc-freezer', world: this.worldKey() });
                         if (this.session.state === 'run' && !this.paused && !this.ending && this.elapsed - this.checkpointAt >= 2)
                             this.checkpoint();
                     }
@@ -671,6 +697,7 @@ export class CoastRaidRuntime implements RaidRuntime {
         this.epoch++;
         this.revelation.reset();
         this.hurtTimers.clear();
+        this.quench();
         this.hitDirections = [];
         this.queue = [];
         this.pendingLayer = null;
@@ -907,6 +934,40 @@ export class CoastRaidRuntime implements RaidRuntime {
         this.restore(activeRaidCheckpoint(state.body, this.layered.raid, this.stepTime));
     }
     getLootContainer(id: string): LootContainer | undefined { return this.containers.find(container => container.id === id); }
+    story() { return storyView(this.session.story, this.session.save, this.session.loadout); }
+    storySources(): StorySource[] {
+        if (this.worldKey().worldVersion !== STORY_WORLD || this.worldKey().mapId !== 'coast') return [];
+        return (['ch01-sc-freezer', 'ch01-sc-breaker'] as const).map(id => {
+            const anchor = MARKET_ANCHORS[id];
+            return { ref: { id, world: { ...this.worldKey() } }, at: { x: anchor.x, y: anchor.y }, radius: anchor.radius, title: anchor.title, available: this.canObserveStory(id) };
+        });
+    }
+    private canObserveStory(id: StorySourceRef['id']): boolean {
+        const key = this.worldKey(), point = MARKET_ANCHORS[id];
+        if (!point || key.worldVersion !== STORY_WORLD || key.mapId !== 'coast' || this.session.story.currentRun?.runId !== key.runId
+            || this.disposed || this.paused || this.overlay || this.locked || this.ending || this.extracted || this.hp <= 0
+            || this.session.state !== 'run' || this.session.pendingSettlement || this.session.conflict || !this.session.storageOK) return false;
+        if (id === 'ch01-sc-freezer' ? this.session.story.currentRun.cues.includes(id) : this.session.story.clues.includes('breaker-down')) return false;
+        return distance(this.player, point) < point.radius && this.walkable(point.x, point.y, this.highTide) && this.sight(this.player, point, this.highTide, 10);
+    }
+    observeStory(ref: StorySourceRef): boolean {
+        if (!ref || !['ch01-sc-freezer', 'ch01-sc-breaker'].includes(ref.id) || !ref.world
+            || Object.keys(this.worldKey()).some(k => ref.world[k as keyof WorldKey] !== this.worldKey()[k as keyof WorldKey])
+            || !this.canObserveStory(ref.id)) return false;
+        return this.commitStoryObservation(ref.id, ref.id === 'ch01-sc-freezer' ? 'freezer-knocks' : 'breaker-down', ref.id === 'ch01-sc-freezer' ? ref.id : undefined);
+    }
+    private commitStoryObservation(source: string, clue: StoryClue, cue?: StoryCueId): boolean {
+        const ticket = this.saves.prepareExpansionMutation(draft => recordStoryObservation(draft.story, clue, cue));
+        if (!ticket) return false;
+        return this.commitLayer({ ticket, action: `story:${source}`, suppress: false, from: this.worldKey().mapId,
+            events: [{ body: { type: 'story-cue', source, clue, text: STORY_RECALL[clue].text,
+                sound: clue === 'heard-call' ? 'call' : clue === 'freezer-knocks' ? 'knocks' : null },
+                world: this.worldKey(), epoch: this.epoch, durability: 'committed' }] });
+    }
+    private openLoot(id: string, runId: string): void {
+        this.lootContext = { containerId: id, runId };
+        this.suppressHeldInput(); this.setOverlay('loot');
+    }
     canLootContainer(id: string, runId: string): boolean {
         const container = this.getLootContainer(id);
         return !!container && !!runId && !!this.player && this.session.state === 'run' && !this.disposed
@@ -1031,6 +1092,8 @@ export class CoastRaidRuntime implements RaidRuntime {
     get reloadTime() { return this.currentWeapon.reload * perkEffects(this.layered).reload; }
     startReload() {
         const w = this.currentWeapon;
+        // A gun without a magazine (#28 M4-07) neither fires nor loads.
+        if (w.ammo && !w.magazine) { this.say('这把枪没装弹匣，不能开火。'); return; }
         if (w.ammo && !this.reloadLeft && this.mag < w.magazine) {
             if (!D.count(this.session.loadout!.bag, w.ammo)) {
                 this.say('背包中没有适用的备用弹药。');
@@ -1204,6 +1267,9 @@ export class CoastRaidRuntime implements RaidRuntime {
         this.updateBullets(dt);
         if (this.session.state !== 'run' || this.paused)
             return;
+        this.updateFire(dt);
+        if (this.session.state !== 'run' || this.paused)
+            return;
         this.interact(dt, input, moving);
         if (this.session.state !== 'run' || this.locked)
             return;
@@ -1259,6 +1325,7 @@ export class CoastRaidRuntime implements RaidRuntime {
         if (pending.from !== this.worldKey().mapId) {
             // A layer change interrupts the breath charge (spec 4.2); its target stayed on the layer left behind.
             clearBreath(this.breath);
+            this.quench();
             this.epoch++;
             this.revelation.reset();
             this.emit({ type: 'layer', from: pending.from, to: this.worldKey().mapId, via: pending.action.replace('entry:', '') }, 'committed');
@@ -1278,15 +1345,18 @@ export class CoastRaidRuntime implements RaidRuntime {
         // A dropped stale ticket leaves the live world as the state to save.
         if (!ok && pending && !this.pendingLayer)
             ok = this.checkpoint();
-        if (ok)
+        if (ok) {
             this.setOverlay('');
+            if (pending?.action === 'story:ch01-sc-call' && this.canLootContainer(STORY_CABINET, this.worldKey().runId))
+                this.openLoot(STORY_CABINET, this.worldKey().runId);
+        }
         return ok;
     }
-    /** `gun`: the player's gun, its id, class and whether a suppressor muffles it, for the view's sound (#28 M2-11). */
-    private shotEvent(shooter: string, weapon: WeaponLook, bullets: BulletState[], angles: number[], gun?: { id: string; cls: GunClass; suppressed: boolean }) {
+    /** `gun`: the shooter's gun (the player's, #28 M2-11; an armed enemy's, M4-02), its id, class and whether a suppressor muffles it, for the view's sound. */
+    private shotEvent(shooter: string, weapon: WeaponLook, bullets: BulletState[], angles: number[], gun?: { id: string; cls: GunClass; suppressed: boolean }, round?: RoundKind | null, color?: TracerColor) {
         this.emit({ type: 'shot', shotId: `${shooter}:${bullets[0].uid}`, shooter, weapon,
             pellets: bullets.map((b, i) => ({ bullet: b.uid, origin: { x: b.x, y: b.y }, angle: angles[i] })),
-            ...(gun ? { gun: { id: gun.id, cls: gun.cls }, suppressed: gun.suppressed } : {}) });
+            ...(gun ? { gun: { id: gun.id, cls: gun.cls }, suppressed: gun.suppressed } : {}), ...(round ? { round } : {}), ...(color ? { color } : {}) });
     }
     /**
      * The trigger over one substep of `dt` seconds: the cooldown, a reload and the aim advance, and each shot falls due at
@@ -1397,21 +1467,77 @@ export class CoastRaidRuntime implements RaidRuntime {
         const body = this.layered ? rpgMultipliers(this.layered).recoil : 1;
         const cone = coneOf(this.handling, w, this.gripAt(at), body), centre = this.player.rotation + driftOf(this.handling, h, body);
         const pellets: BulletState[] = [], angles: number[] = [];
+        // A special round (special-rounds.ts) the gun can load: dragon's breath flies slower and lighter; a tracer is the
+        // gun's own round. Ordinary rounds take exactly the numbers they always did.
+        const round = this.round && roundFits(this.round, w.ammo) ? this.round : null, struck = new Set<string>();
+        const speed = round === 'dragon' ? DRAGON.speed : 760, damage = round === 'dragon' ? w.damage * DRAGON.damage : w.damage;
         for (let i = 0; i < w.pellets; i++) {
             const angle = centre + (this.random() - .5) * cone;
             const b = { uid: this.allocateEntityUid(), x: at.x, y: at.y,
-                rotation: wrap(angle), vx: Math.cos(angle) * 760, vy: Math.sin(angle) * 760, left: w.range + MUZZLE, damage: w.damage, enemy: false,
+                rotation: wrap(angle), vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, left: w.range + MUZZLE, damage, enemy: false,
                 ...(crit ? { crit: structuredClone(crit) } : {}) };
             this.bullets.push(b);
             if (flightSeconds !== undefined) this.newbornFlight?.set(b.uid, flightSeconds);
+            if (round) this.specials.set(b.uid, { kind: round, ...(round === 'tracer' ? { color: this.tracerColor } : {}), struck });
             pellets.push(b);
             angles.push(angle);
         }
         // The charge went into this shot (spec 4.2): a precise aim held on charges again from zero, hit or miss.
         clearBreath(this.breath);
         recoil(this.handling, h, perkEffects(this.layered).recoil);
-        this.shotEvent('player', this.weaponLook, pellets, angles, gun ? { id: w.id, cls: GUNS[w.id as keyof typeof GUNS].cls, suppressed: gun.suppressed } : undefined);
+        this.shotEvent('player', this.weaponLook, pellets, angles, gun ? { id: w.id, cls: GUNS[w.id as keyof typeof GUNS].cls, suppressed: gun.suppressed } : undefined, round,
+            round === 'tracer' ? this.tracerColor : undefined);
         return true;
+    }
+    /** The special round a bullet in flight is (special-rounds.ts) and a tracer's colour, for the view; undefined for an ordinary one. */
+    specialOf(uid: string): { kind: RoundKind; color?: TracerColor } | undefined { return this.specials.get(uid); }
+    /**
+     * A round came down at `at` (a wall, a body, its range's end): a special round leaves the flight record, and a dragon's
+     * breath pellet waits to burst until the substep's flight is resolved (updateFire).
+     */
+    private land(uid: string, at: Point) {
+        const special = this.specials.get(uid);
+        if (!special) return;
+        this.specials.delete(uid);
+        if (special.kind === 'dragon') this.landed.push({ at: { x: at.x, y: at.y }, struck: special.struck });
+    }
+    /** Put every fire out and forget special rounds in flight: a reload or a layer change starts the world over. */
+    private quench() { this.specials.clear(); this.landed = []; this.fire.clear(); }
+    /** Live enemies standing on this map now (pursuers on their way elsewhere are not). */
+    private bodiesHere() {
+        const away = new Set(this.layered?.raid?.pursuits.map(p => p.enemy.uid) ?? []);
+        return this.enemies.filter(e => e.hp > 0 && !away.has(e.uid));
+    }
+    /**
+     * After the bullets of a substep: each landed dragon's breath pellet bursts (special-rounds.ts DRAGON), lighting a
+     * ground fire and setting alight every enemy within reach and in clear line, which also takes the burst's damage once
+     * per shot; then the fire burns on for `dt`. Fire never touches the player. Draws no random number unless a body
+     * dies (its corpse rolls loot as any kill does), so ordinary raids are untouched.
+     */
+    private updateFire(dt: number) {
+        const landed = this.landed;
+        this.landed = [];
+        for (const { at, struck } of landed) {
+            this.emit({ type: 'blast', at, radius: DRAGON.burst.radius, fire: DRAGON.fire.seconds });
+            this.fire.kindle(at);
+            const reached = this.bodiesHere().filter(e => distance(e, at) <= DRAGON.burst.radius && this.sight(at, e, this.highTide, 0)).map(e => e.uid);
+            for (const uid of reached) {
+                const e = this.enemies.find(a => a.uid === uid);
+                if (!e || e.hp <= 0) continue;
+                this.fire.ignite(uid);
+                if (struck.has(uid)) continue;
+                struck.add(uid);
+                this.damageEnemy(e, DRAGON.burst.damage, Math.atan2(at.y - e.y, at.x - e.x), undefined, { at });
+                if (this.session.state !== 'run' || this.paused) return;
+            }
+        }
+        if (!this.fire.active) return;
+        for (const tick of this.fire.step(dt, this.bodiesHere())) {
+            const e = this.enemies.find(a => a.uid === tick.uid);
+            if (!e || e.hp <= 0) continue;
+            this.damageEnemy(e, tick.damage, null, undefined, { at: null });
+            if (this.session.state !== 'run' || this.paused) return;
+        }
     }
     /**
      * The critical snapshot of a gun shot fired now (docs/tasks/critical-perk-contract.md section 3), in v3 raids only:
@@ -1428,7 +1554,11 @@ export class CoastRaidRuntime implements RaidRuntime {
         const sources = critSources({ technique: effectiveAttributes(state).technique, weapon: w, perks, focus: state.body.effects.focus > 0, breath: charge });
         return sources ? { sources, multiplier: critMultiplier(perks), target: sources.some(s => s.id === 'technique-15-a') ? breath.target : null } : undefined;
     }
-    damageEnemy(e: Enemy, damage: number, incomingAngle = Math.atan2(this.player.y - e.y, this.player.x - e.x), bullet?: string) {
+    /**
+     * `fire`: the player's dragon's breath (special-rounds.ts), a hurt with cause 'fire': a burst from `at` (armour
+     * applies from there), or burning when `at` is null (no direction, through armour). Without it, a blow.
+     */
+    damageEnemy(e: Enemy, damage: number, incomingAngle: number | null = Math.atan2(this.player.y - e.y, this.player.x - e.x), bullet?: string, fire?: { at: Point | null }) {
         if (e.hp <= 0)
             return;
         const hp = e.hp, angle = incomingAngle;
@@ -1436,7 +1566,8 @@ export class CoastRaidRuntime implements RaidRuntime {
             const state = this.snapshotExpansion(), raid = state.raid!, map = raid.currentMap;
             const target = raid.maps[map].enemies.find(a => a.uid === e.uid) ?? raid.pursuits.find(p => p.enemy.uid === e.uid)?.enemy;
             if (target) {
-                damageLayerEnemy(state, map, target, damage, false);
+                damageLayerEnemy(state, map, target, damage, false, fire ? { owner: 'player', at: fire.at ?? raid.player,
+                    ...(fire.at && angle !== null ? { incomingAngle: angle } : {}), through: !fire.at } : undefined);
                 this.restoreExpansion(state);
             }
         }
@@ -1458,7 +1589,7 @@ export class CoastRaidRuntime implements RaidRuntime {
         }
         const now = this.enemies.find(a => a.uid === e.uid)!;
         this.hurtTimers.set(e.uid, .07);
-        this.emit({ type: 'hurt', cause: 'blow', uid: e.uid, at: { x: e.x, y: e.y }, damage: hp - now.hp, critical: false, angle,
+        this.emit({ type: 'hurt', cause: fire ? 'fire' : 'blow', uid: e.uid, at: { x: e.x, y: e.y }, damage: hp - now.hp, critical: false, angle,
             ...(bullet === undefined ? {} : { bullet }) });
         if (now.hp <= 0) {
             this.emit({ type: 'death', uid: e.uid, ...(enemyRules(this.layered?.raid) ? { killer: 'player' } : {}), corpseAngle: now.rotation - (this.layered ? 0 : Math.PI / 2), containerId: `corpse-${e.uid}` });
@@ -1534,7 +1665,8 @@ export class CoastRaidRuntime implements RaidRuntime {
         const flightSeconds = (bullet: BulletState) => newborn?.get(bullet.uid) ?? dt;
         if (this.layered) {
             const hp = this.hp, state = this.snapshotExpansion();
-            advanceLayerShots(state, this.layeredWorld!, state.raid!.currentMap, dt, undefined, source => { this.showIncomingHit(source); this.extractTime = 0; }, e => this.observeShot(e), flightSeconds);
+            advanceLayerShots(state, this.layeredWorld!, state.raid!.currentMap, dt, undefined, source => { this.showIncomingHit(source); this.extractTime = 0; },
+                e => { this.observeShot(e); this.land(e.bullet.uid, e.reason === 'hit-actor' || e.reason === 'range' ? e.contact ?? e.lastFree : e.lastFree); }, flightSeconds);
             this.restoreExpansion(state);
             // An enemy round that took health is real damage (spec 4.2), as a blow through hurt is.
             if (this.hp < hp)
@@ -1566,12 +1698,14 @@ export class CoastRaidRuntime implements RaidRuntime {
                         contact: blocked && Number.isFinite(t) && t >= 0 && t <= 1 ? { x: previous.x + dx * t, y: previous.y + dy * t } : null,
                         normal: blocked && unique && !startBlocked ? crossX ? { x: -Math.sign(dx), y: 0 } : { x: 0, y: -Math.sign(dy) } : null,
                         surface: blocked ? 'wall' : null, target: null });
+                    this.land(b.uid, blocked || bounds || startBlocked ? previous : b);
                     remove = true;
                     break;
                 }
                 const target = b.enemy ? distance(b, this.player) < 12 ? 'player' : null : this.enemies.find(e => e.hp > 0 && distance(e, b) < 14)?.uid ?? null;
                 if (target) {
                     this.emit({ type: 'impact', bullet: b.uid, owner: bulletOwner(b), reason: 'hit-actor', lastFree: previous, contact: { x: b.x, y: b.y }, normal: null, surface: 'actor', target });
+                    this.land(b.uid, b);
                     if (target === 'player')
                         this.hurt(b.damage, { x: this.player.x - b.vx, y: this.player.y - b.vy }, undefined, b.uid);
                     else
@@ -1652,9 +1786,10 @@ export class CoastRaidRuntime implements RaidRuntime {
         if (ref.kind === 'ground')
             return this.pickupLoot(ref.id);
         if (ref.kind === 'container' && this.canLootContainer(ref.id, ref.runId)) {
-            this.lootContext = { containerId: ref.id, runId: ref.runId };
-            this.suppressHeldInput();
-            this.setOverlay('loot');
+            if (ref.id === STORY_CABINET && this.worldKey().worldVersion === STORY_WORLD
+                && !this.session.story.currentRun?.cues.includes('ch01-sc-call')
+                && !this.commitStoryObservation('ch01-sc-call', 'heard-call', 'ch01-sc-call')) return false;
+            this.openLoot(ref.id, ref.runId);
             return true;
         }
         if (ref.kind === 'door' && (!this.space || !doorAnchor(this.space, ref.id, this.player))) {

@@ -11,9 +11,10 @@
 import { gunsmithArt } from '../art/gunsmith-hooks';
 import type { Application } from 'pixi.js';
 import * as D from '../domain';
-import { exitBearing, questProgress } from '../qol';
+import { exitBearing, questMarks, questProgress } from '../qol';
 import type { SaveSession, SessionState } from '../session';
-import type { CoastHandle, HudView, HurtCause, Interaction, PublishedView, StampedEvent, TargetRef } from '../raid-runtime/contract';
+import type { CoastHandle, HudView, HurtCause, Interaction, PublishedView, StampedEvent, StorySource, TargetRef } from '../raid-runtime/contract';
+import { STORY_RECALL, STORY_WORLD } from '../story';
 import { critHud } from '../perk-copy';
 import { CoastView, AIM_H, type ViewOptions } from './scene';
 import { actorShown } from './structure-guide';
@@ -28,7 +29,8 @@ import { SampleSound } from './sound';
 import { esc } from '../html';
 
 export type SampleExit = { kind: 'settled' };
-type Panel = null | 'pause' | 'inventory' | 'loot' | 'map' | 'reading' | 'ending';
+type Panel = null | 'pause' | 'inventory' | 'loot' | 'map' | 'reading' | 'recall' | 'ending';
+type StoryCue = Extract<StampedEvent, { type: 'story-cue' }>;
 
 const REASONS: Record<string, string> = {
   'stale-target': '目标已失效，请重新靠近。', 'stale-or-blocked': '现在无法交互。', 'out-of-range': '离目标过远。',
@@ -44,7 +46,8 @@ const OUTRO_TEXT: Record<Outro, string> = { died: '你倒下了', extract: '撤�
  * still settled as a failure. 'failed' remains only for a reason this view does not know.
  */
 const OUTRO_OF: Record<string, Outro> = { extract: 'extract', death: 'died', timeout: 'timeout', abandon: 'abandon' };
-type Drain = Exclude<HurtCause, 'blow'>;
+/** Fire (dragon's breath) hurts enemies only, so it is never a drain on the player. */
+type Drain = Exclude<HurtCause, 'blow' | 'fire'>;
 /** Continuous damage (R6-L2) shown beside the health bar: label and the screen-edge tint while it lasts. */
 const DRAIN: Record<Drain, { label: string; tint: string }> = {
   bleed: { label: '流血', tint: '150,26,16' }, pollution: { label: '污染', tint: '104,128,36' },
@@ -94,8 +97,10 @@ const HTML = `
     <div class="cs-dev" data-devices hidden></div>
     <div class="cs-crit" data-crit hidden><div><span data-crit-label></span><b data-crit-chance></b><em data-crit-target aria-hidden="true"></em></div><div class="cs-breath" data-breath hidden aria-hidden="true"><span data-breath-label></span><i><b data-breath-bar></b></i><small data-breath-time></small></div></div></section>
   <div data-radio class="cs-radio" hidden></div>
+  <div data-story class="cs-story" hidden><small data-story-source></small><span data-story-text></span></div>
   <section class="cs-info">
     <button type="button" data-do="map" data-exit-nav>选择撤离点</button>
+    <button type="button" data-recall hidden>见闻 <span data-recall-count></span></button>
     <details data-quests><summary>任务 <span data-quest-count></span></summary><div data-quest-list></div><small>携带含带入物资 · 回站交付</small></details>
   </section>
   <div class="cs-keys" data-keys><kbd>E</kbd>交互 / 撤离　<kbd>Tab</kbd>背包　<kbd>Q</kbd>治疗　<kbd>R</kbd>换弹　<kbd>M</kbd>地图　<kbd>Esc</kbd>暂停</div>
@@ -124,6 +129,8 @@ export class CoastSampleHost {
   private last: PublishedView | null = null;
   private lastSeq = 0;
   private toastLeft = 0;
+  /** The --cs-dock value last written on the page (the docked panel's height), so an unchanged one is not rewritten. */
+  private dockShown = '';
   private radioLeft = 0;
   private lastRejected = '';
   private mounted = false;
@@ -173,6 +180,7 @@ export class CoastSampleHost {
         close: () => this.closePanel(true),
         magazine: () => this.last?.frame.hud.weapon.mag ?? 0,
         used: () => this.sound.used(),
+        questMarks: () => questMarks(this.session.save, this.session.loadout),
       });
       this.wire();
       const tick = () => this.frame();
@@ -197,7 +205,11 @@ export class CoastSampleHost {
     const playing = this.panel === null;
     // The mouse look-ahead follows the pointer's place on screen (none while touch aims); the aim reads through it.
     this.view.pointer = this.input.touch ? null : { x: this.input.pointer.x, y: this.input.pointer.y };
-    const intent = this.input.read(playing, (x, y) => this.view.aimFromClient(x, y));
+    const read = this.input.read(playing, (x, y) => this.view.aimFromClient(x, y));
+    // The breaker (#83) is no Runtime target: while the prompt names it, E (or the touch button) checks it and does not
+    // also reach the world. Decided on the last presented frame, as the note below is.
+    const story = playing ? this.storyTarget : null, check = !!story && read.interactPressed;
+    const intent = story ? { ...read, interactPressed: false, interactHeld: false } : read;
     if (intent.firePressed) this.sound.trigger(this.last?.frame.hud.weapon);
     const note = playing && intent.interactPressed && this.last?.frame.interaction?.kind === 'note' ? this.last.frame.interaction.ref.id : null;
     // The frame after a mount or a floor rebuild starts after the view's first bake and texture upload. That gap is the
@@ -212,6 +224,7 @@ export class CoastSampleHost {
     const t2 = performance.now();
     this.last = batch;
     if (note) this.readingFor = note;
+    if (check) this.checkStory(story!);
     this.hud(batch);
     this.syncPanels(batch);
     this.stats.advanceMs = t1 - t0; this.stats.presentMs = t2 - t1; this.stats.frames++;
@@ -273,7 +286,7 @@ export class CoastSampleHost {
     } else if (e.type === 'hurt' && e.uid === 'player') {
       // A blow of any size pulses the red edge; continuous causes add up into the drain readout instead (R6-L2).
       if (e.cause === 'blow') { this.hurtPulse = Math.min(1, this.hurtPulse + .45 + e.damage / 40); if (this.panel === 'loot') this.lootHitT = 1.2; }
-      else this.drains[e.cause].acc += e.damage;
+      else if (e.cause !== 'fire') this.drains[e.cause].acc += e.damage;
     }
     // Only the player's rounds crit, and their impact comes first in the batch: the marker it put up turns critical.
     else if (e.type === 'hurt' && e.critical && e.uid === this.markUid && this.markT > 0) this.critMark();
@@ -355,7 +368,7 @@ export class CoastSampleHost {
     // Allow a few frames for the requested block to be published before a running phase may close the panel.
     if (phase === 'running' && this.blockPending > 0) { this.blockPending--; return; }
     this.blockPending = 0;
-    if (phase !== 'blocked' && (this.panel === 'loot' || this.panel === 'inventory' || this.panel === 'map' || this.panel === 'reading')) this.closePanel(false);
+    if (phase !== 'blocked' && this.blocking()) this.closePanel(false);
     if (phase === 'paused' && (this.panel !== 'pause' || this.pauseStorageKey !== this.storagePanelKey)) this.showPause();
     if (this.panel === 'pause' && phase === 'running') this.closePanel(false);
     if (this.panel === 'map' && (this.stats.frames & 7) === 0) this.redrawMap();
@@ -374,7 +387,7 @@ export class CoastSampleHost {
       if ((this.panel === 'inventory' || this.panel === 'loot') && this.inv.key(k)) return;
       if (k === 'escape') { if (this.blocking()) this.closePanel(true); else if (this.panel === 'pause') { if (this.guideOpen) this.showPause(); else this.resume(); } else if (!this.panel) this.pause(); return; }
       if (k === 'tab') { if (this.blocking()) this.closePanel(true); else if (!this.panel) this.openInventory(); return; }
-      if (k === 'e' && (this.panel === 'loot' || this.panel === 'reading')) { this.closePanel(true); return; }
+      if (k === 'e' && (this.panel === 'loot' || this.panel === 'reading' || this.panel === 'recall')) { this.closePanel(true); return; }
       // A movement key leaves the loot window and walks at once (issue #26 F13), so a looter under fire need not reach for
       // E or Esc. Loot only: the bag, map, note and pause keep their keys. A held key's repeats (above) and browser
       // shortcuts do not count; a Shift pressed in the window makes the walk a sprint, as it would outside.
@@ -384,6 +397,7 @@ export class CoastSampleHost {
         if (e.shiftKey) this.input.key('shift', true, true);
       }
       if (k === 'm') { if (this.panel === 'map') this.closePanel(true); else if (!this.panel || this.blocking()) { if (this.panel) this.closePanel(true); this.openMap(); } return; }
+      if (k === 'j' && this.recallOffered()) { if (this.panel === 'recall') this.closePanel(true); else if (!this.panel || this.blocking()) { if (this.panel) this.closePanel(true); this.openRecall(); } return; }
       if (this.panel) return;
       this.input.key(inputKey(e), true, e.repeat);
     });
@@ -450,10 +464,14 @@ export class CoastSampleHost {
       if (el.closest('[data-near-toggle]')) { this.nearbyOpen = !this.nearbyOpen; return; }
       const ground = el.closest('[data-ground]')?.getAttribute('data-ground');
       if (ground) { this.services.activate({ runId: w.runId, mapId: w.mapId, kind: 'ground', id: ground }); return; }
+      // The breaker's row (#83) and the one world target listed beside it: a tap acts on it, a click picks it for E.
+      if (el.closest('[data-story]')) { if (this.input.touch && this.storyOption) this.checkStory(this.storyOption); else this.storyPick = 'story'; return; }
+      if (el.closest('[data-world]')) { const t = this.last?.frame.interaction; if (this.input.touch && t) this.services.activate(t.ref); else this.storyPick = 'world'; return; }
       const id = el.closest('[data-id]')?.getAttribute('data-id'); if (!id) return;
       // A tap names the exact source to open, as the action button cannot; a click (mouse) selects it for E.
-      if (this.input.touch) this.services.activate({ runId: w.runId, mapId: w.mapId, kind: 'container', id }); else this.input.select(id);
+      if (this.input.touch) this.services.activate({ runId: w.runId, mapId: w.mapId, kind: 'container', id }); else { this.input.select(id); if (this.storyOption) this.storyPick = 'world'; }
     });
+    s.on(this.q('[data-recall]'), 'click', () => { if (!this.panel) this.openRecall(); else if (this.panel === 'recall') this.closePanel(true); });
     s.on(this.q('[data-pause]'), 'click', () => { if (!this.panel) this.pause(); });
     s.on(this.q('.cs-hud'), 'click', e => { if ((e.target as HTMLElement).closest('[data-do="map"]') && !this.panel) this.openMap(); });
     // A drop that re-renders the grid removes the press target, so the browser may send no trailing click: every new press clears the suppression.
@@ -484,14 +502,23 @@ export class CoastSampleHost {
     this.input.moveStick(s.kind, e.pointerId, (e.clientX - s.ox) / 56, (e.clientY - s.oy) / 56);
   }
   private cycleChoice(dir: number) {
-    const t = this.last?.frame.interaction; if (!t || t.choices.length < 2 || this.panel) return;
+    const t = this.last?.frame.interaction; if (!t || this.panel) return;
+    if (this.storyOption && t.kind !== 'exit') {
+      // The breaker joins the ring as its first entry (#83): story, then the world's sources in their own order.
+      const ring = ['story', ...(t.choices.length ? t.choices.map(c => c.id) : ['world'])];
+      const i = this.storyTarget ? 0 : Math.max(1, ring.indexOf(t.choices.find(c => c.selected)?.id ?? 'world')), next = ring[(i + dir + ring.length) % ring.length];
+      this.storyPick = next === 'story' ? 'story' : 'world';
+      if (next !== 'story' && next !== 'world') this.input.select(next);
+      return;
+    }
+    if (t.choices.length < 2) return;
     const i = t.choices.findIndex(c => c.selected), next = t.choices[(i + dir + t.choices.length) % t.choices.length];
     this.input.select(next.id);
   }
 
   // --- panels ---
   private q<T extends HTMLElement>(s: string) { return this.root.querySelector(s) as T; }
-  private blocking() { return this.panel === 'inventory' || this.panel === 'loot' || this.panel === 'map' || this.panel === 'reading'; }
+  private blocking() { return this.panel === 'inventory' || this.panel === 'loot' || this.panel === 'map' || this.panel === 'reading' || this.panel === 'recall'; }
   private setPanel(kind: Panel, html: string, label: string) {
     this.panel = kind; const p = this.q('[data-panel]'); p.className = `cs-panel ${kind ?? ''}`; p.innerHTML = html; p.setAttribute('aria-label', label); p.hidden = !kind;
     p.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
@@ -547,14 +574,14 @@ export class CoastSampleHost {
   }
   /** Controls for this device, the guide the original pause offered. */
   private showGuide() {
-    const keys: [string, string][] = [['W A S D', '移动 / 离开搜刮'], ['鼠标', '瞄准'], ['左键 / 右键', '攻击 / 精瞄'], ['Shift', '冲刺'], ['R', '换弹'], ['E', '交互 / 搜刮 / 阅读'], ['按住 E 3 秒', '撤离（绿色标记内）'], ['滚轮', '切换搜刮目标'], ['Q', '快捷治疗'], ['Tab', '背包（不暂停）'], ['M', '地图（不暂停）'], ['1 / 2', '主武器 / 匕首'], ['F / G', '开关枪上的灯光 / 激光'], ['V', '切换双档瞄具'], ['Esc', '暂停 / 关闭面板']];
+    const keys: [string, string][] = [['W A S D', '移动 / 离开搜刮'], ['鼠标', '瞄准'], ['左键 / 右键', '攻击 / 精瞄'], ['Shift', '冲刺'], ['R', '换弹'], ['E', '交互 / 搜刮 / 阅读'], ['按住 E 3 秒', '撤离（绿色标记内）'], ['滚轮', '切换搜刮目标'], ['Q', '快捷治疗'], ['Tab', '背包（不暂停）'], ['M', '地图（不暂停）'], ['J', '见闻（不暂停）'], ['1 / 2', '主武器 / 匕首'], ['F / G', '开关枪上的灯光 / 激光'], ['V', '切换双档瞄具'], ['Esc', '暂停 / 关闭面板']];
     const body = this.input.touch
-      ? '<p>左半屏按住拖动是移动，拖远冲刺；右半屏按住拖动是瞄准，拖远持续开火，松开即停。靠近物资点「搜刮」或「拾取」；几个箱子重叠时，点名称直接打开那一个。在撤离区站稳，按住「按住撤离」3 秒。枪上装了激光或灯光时，点「设备」开关；装了双档瞄具时，点「切档」。背包和地图不暂停行动。</p>'
+      ? '<p>左半屏按住拖动是移动，拖远冲刺；右半屏按住拖动是瞄准，拖远持续开火，松开即停。靠近物资点「搜刮」或「拾取」；几个箱子重叠时，点名称直接打开那一个。在撤离区站稳，按住「按住撤离」3 秒。枪上装了激光或灯光时，点「设备」开关；装了双档瞄具时，点「切档」。背包、地图和右上的「见闻」不暂停行动。</p>'
       : `<div class="cs-guide">${keys.map(([k, v]) => `<div><kbd>${k}</kbd>${v}</div>`).join('')}</div>`;
     this.guideOpen = true;
     this.setPanel('pause', `<h2>行动指南</h2>${body}<p class="cs-sub">每局限时 10 分钟。死亡、超时或放弃都按撤离失败处理：丢失背包物资和主武器，保留安全箱内的物品和水手匕首。</p><div class="cs-row"><button type="button" data-do="pause-back">返回</button></div>`, '行动指南');
   }
-  private openBlocking(kind: 'inventory' | 'map' | 'reading') {
+  private openBlocking(kind: 'inventory' | 'map' | 'reading' | 'recall') {
     this.input.suppressHeld(); this.sticks.clear();
     this.runtime.setBlocked(true); this.blockPending = 3;
     this.panel = kind;
@@ -591,10 +618,83 @@ export class CoastSampleHost {
     this.input.suppressHeld(); this.sticks.clear();
     this.setPanel('reading', `<header class="cs-inv-head"><div><h2>${esc(r.title)}</h2><span class="cs-sub">世界仍在运行</span></div><button type="button" data-do="close">关闭（E / Esc）</button></header><p class="cs-reading">${esc(r.text)}</p>`, r.title);
   }
+
+  // --- market story (#83): the breaker check, subtitles and the recall. Input and display only: the Runtime checks
+  // range, sight and the run, records the observation and announces it (story-cue) after the write succeeded. ---
+  /** The breaker while it can be checked now (CoastServices.storySources), listed beside any world target in reach. */
+  private storyOption: StorySource | null = null;
+  /** The breaker while E would check it: nearer than the Runtime's target (a tie goes by stable id), or picked. */
+  private storyTarget: StorySource | null = null;
+  /** The player's pick between the breaker and the world target (wheel, a click on the list); null: the nearer. */
+  private storyPick: 'story' | 'world' | null = null;
+  private storyChoice(f: PublishedView['frame']) {
+    const breaker = this.panel || this.last?.stamp.world.worldVersion !== STORY_WORLD ? null
+      : this.services.storySources().find(s => s.ref.id === 'ch01-sc-breaker' && s.available) ?? null;
+    this.storyOption = breaker;
+    if (!breaker) { this.storyPick = null; this.storyTarget = null; return; }
+    const t = f.interaction, d = (p: { x: number; y: number }) => Math.hypot(p.x - f.player.x, p.y - f.player.y);
+    if (!t) this.storyTarget = breaker;
+    // An exit's hold is never taken over.
+    else if (t.kind === 'exit') this.storyTarget = null;
+    else if (this.storyPick) this.storyTarget = this.storyPick === 'story' ? breaker : null;
+    else { const a = d(breaker.at), b = d(t.at); this.storyTarget = a < b - .5 || Math.abs(a - b) <= .5 && breaker.ref.id < t.ref.id ? breaker : null; }
+  }
+  /** E, the touch button or the breaker's row. Drawing the prompt or opening the recall never observes anything. */
+  private checkStory(s: StorySource) {
+    this.storyPick = null;
+    // A failed write pauses with the save panel (the Runtime's checkpoint-error); anything else was simply refused.
+    if (!this.services.observeStory(s.ref) && this.session.storageOK && !this.session.conflict) this.toast('现在无法检查。', true);
+  }
+  /** 见闻 is offered in the market world, or anywhere once something has been recalled. */
+  private recallOffered() { return this.last?.stamp.world.worldVersion === STORY_WORLD || this.services.story().recall.length > 0; }
+  /** The recall, with the reading panel's timing: blocking, the world keeps running. */
+  private openRecall() {
+    if (!this.last || !this.recallOffered()) return;
+    this.openBlocking('recall');
+    const r = this.services.story().recall;
+    const list = r.length ? r.map(x => `<article class="cs-recall"><header><b>${esc(x.title)}</b><small>${esc(x.source)}</small></header><p>${esc(x.text)}</p></article>`).join('')
+      : '<p class="cs-sub">还没有见闻。看到、听到的事会记在这里。</p>';
+    this.setPanel('recall', `<header class="cs-inv-head"><div><h2>见闻</h2><span class="cs-sub">世界仍在运行</span></div><button type="button" data-do="close">${this.input.touch ? '关闭' : '关闭（J / E / Esc）'}</button></header><div class="cs-recalls">${list}</div><p class="cs-sub">只记亲眼看到、亲耳听到的事。翻看不会改变任何事。</p>`, '见闻');
+  }
+  /** The 见闻 count on the HUD button, or -1 while the button is hidden (rewritten only when it changes). */
+  private recallShown = -1;
+  /** Seconds left of the story line; one at a time, a newer cue replaces it and nothing waits in a queue. */
+  private storyLeft = 0;
+  private showStoryLine(e: StoryCue) {
+    this.q('[data-story-source]').textContent = STORY_RECALL[e.clue]?.source ?? '';
+    this.q('[data-story-text]').textContent = e.text;
+    this.storyLeft = Math.max(5, e.text.length * .25);
+  }
+  /**
+   * The story line yields to danger: a radio warning, a refused action or a blow hides it, and a line whose time runs
+   * out while hidden is dropped (the recall keeps it). It stays clear of a docked bag or loot panel, or goes to the top
+   * when that panel leaves no room below.
+   */
+  private storyFrame(dt: number) {
+    const el = this.q('[data-story]'); if (!el) return;
+    if (this.storyLeft > 0) this.storyLeft = Math.max(0, this.storyLeft - dt);
+    const danger = this.radioLeft > 0 || this.toastLeft > 0 && this.q('[data-toast]').classList.contains('bad') || this.hurtPulse > .05;
+    const docked = this.panel === 'loot' || this.panel === 'inventory';
+    const show = this.storyLeft > 0 && !danger && (this.panel === null || docked);
+    if (el.hidden === show) el.hidden = !show;
+    if (!show) return;
+    const inset = docked ? Math.max(0, innerHeight - this.q('[data-panel]').getBoundingClientRect().top) : 0, over = docked && innerHeight - inset < 64;
+    el.classList.toggle('over', over);
+    if (docked && !over) el.style.setProperty('--story-b', `${Math.round(inset + 8)}px`); else el.style.removeProperty('--story-b');
+    if (!over) { el.style.removeProperty('left'); el.style.removeProperty('top'); el.style.removeProperty('width'); el.style.removeProperty('min-height'); return; }
+    // No room outside a full-screen panel (a phone's loot window): the line covers only the panel's own title block,
+    // never its danger line or its close button.
+    // The danger line's box stretches; its text is right-aligned, so its first piece of text marks where it starts.
+    const title = this.q('[data-panel] .cs-inv-head > div')?.getBoundingClientRect(), risk = this.q('[data-panel] [data-risk] > *')?.getBoundingClientRect();
+    if (!title) { el.hidden = true; return; }
+    const right = risk && risk.width ? risk.left - 12 : title.right, hud = this.q('.cs-hud').getBoundingClientRect();
+    el.style.left = `${Math.round(title.left - hud.left - 4)}px`; el.style.top = `${Math.round(title.top - hud.top - 4)}px`;
+    el.style.width = `${Math.max(160, Math.round(right - title.left + 4))}px`; el.style.minHeight = `${Math.round(title.height + 8)}px`;
+  }
   /** Close a blocking panel; the Runtime clears its loot context in setBlocked(false). */
   private closePanel(byPlayer: boolean) {
     const was = this.panel; this.blockPending = 0;
-    if (byPlayer && (was === 'inventory' || was === 'loot' || was === 'map' || was === 'reading')) this.runtime.setBlocked(false);
+    if (byPlayer && (was === 'inventory' || was === 'loot' || was === 'map' || was === 'reading' || was === 'recall')) this.runtime.setBlocked(false);
     if (was === 'inventory' || was === 'loot') this.inv.closeTransient();
     if (was === 'reading') this.reading = null;
     this.input.suppressHeld(); this.sticks.clear();
@@ -676,7 +776,7 @@ export class CoastSampleHost {
     q('[data-st]').style.width = `${Math.max(0, h.stamina / h.maxStamina) * 100}%`; q('[data-st-text]').textContent = `${Math.round(h.stamina)}`;
     const w = h.weapon;
     if (w.id !== this.weaponShown) { this.weaponShown = w.id; q<HTMLImageElement>('[data-weapon-icon]').src = weaponIcon(w.id); q('[data-weapon-name]').textContent = w.name; q('[data-swap]').textContent = w.id === 'knife' ? '主武器' : '匕首'; }
-    q('[data-mag]').textContent = !w.magSize ? '近战' : w.reloading ? '换弹中' : `${w.mag} / ${w.magSize}`;
+    q('[data-mag]').textContent = !w.magSize ? w.id === 'knife' ? '近战' : '没装弹匣' : w.reloading ? '换弹中' : `${w.mag} / ${w.magSize}`;
     q('[data-reserve]').textContent = w.magSize ? `备用 ${w.reserve}` : '';
     q('[data-mode]').textContent = w.magSize ? h.aim.mode === 'auto' ? '全自动' : '单发' : '';
     q('[data-weapon]').classList.toggle('empty', !!w.magSize && w.mag === 0 && !w.reloading);
@@ -694,8 +794,14 @@ export class CoastSampleHost {
     q('[data-tide]').textContent = h.tideWarning ? '潮汐预警' : h.highTide ? '高潮' : '';
     q('[data-hits]').innerHTML = h.hitDirections.filter(x => x.angle !== null).map(x => `<i style="transform:rotate(${x.angle!}rad);opacity:${Math.min(1, x.left)}"></i>`).join('');
     if ((this.stats.frames & 15) === 0) this.measureHudTop();
-    if ((this.stats.frames & 3) === 0) { const docked = this.panel === 'loot' || this.panel === 'inventory'; this.view.panelInset = docked ? Math.max(0, innerHeight - this.q('[data-panel]').getBoundingClientRect().top) : 0; }
-    this.prompt(this.panel ? null : f.interaction, f.player.y);
+    if ((this.stats.frames & 3) === 0) {
+      const docked = this.panel === 'loot' || this.panel === 'inventory'; this.view.panelInset = docked ? Math.max(0, innerHeight - this.q('[data-panel]').getBoundingClientRect().top) : 0;
+      // The page toast (#toast, outside this root) keeps above a docked panel on a desktop raid (coast.css).
+      const dock = `${Math.round(this.view.panelInset)}px`;
+      if (dock !== this.dockShown) { this.dockShown = dock; document.documentElement.style.setProperty('--cs-dock', dock); }
+    }
+    this.storyChoice(f); this.view.storyFocus = !!this.storyTarget;
+    this.prompt(this.panel ? null : f.interaction, f.player.y, this.storyTarget, this.storyOption);
     this.stairNames(f);
     const cross = q('[data-cross]'); cross.hidden = this.input.touch || !this.input.pointer.inside || !!this.panel;
     // Recoil kick on the reticle; a ring around it fills while reloading.
@@ -718,6 +824,7 @@ export class CoastSampleHost {
     }
     if (this.toastLeft > 0) { this.toastLeft -= dt; if (this.toastLeft <= 0) q('[data-toast]').classList.remove('on'); }
     if (this.radioLeft > 0) { this.radioLeft -= dt; if (this.radioLeft <= 0) q('[data-radio]').hidden = true; }
+    this.storyFrame(dt);
     if (this.panel === 'loot' && lootChanged) this.inv.render();
     if (this.panel === 'loot') this.lootRisk(f.hud, dt);
     this.feedbackFrame(b, dt);
@@ -902,13 +1009,24 @@ export class CoastSampleHost {
       : this.selectedExit ? `${this.selectedExit} · 返回地面查看方位` : '选择撤离点';
     const progress = questProgress(this.session.save, this.session.loadout);
     this.q('[data-quest-count]').textContent = `· ${progress.length} 项未完成`;
-    const html = progress.map(qt => `<section><strong>${esc(qt.name)}</strong>${qt.needs.map(n => `<p>${esc(name(n.id))}：仓库 ${n.stored} · 携带 ${n.carried} / 需 ${n.needed}</p>`).join('')}</section>`).join('') || '<p>全部任务已交付。</p>';
+    // The market (#83): where the repair list says the spare parts are, and the optional look at the breaker. Only
+    // what the player was told or actually recorded; nothing here claims a place was searched.
+    const market = b.stamp.world.worldVersion === STORY_WORLD, story = this.services.story();
+    const breaker = story.recall.some(r => r.id === 'breaker-down');
+    const hint = market ? `<p class="cs-hint-line">维修单：旧交易厅后头配电区，蔡建平的备用工具柜，第二层。</p><p class="cs-hint-line">${!breaker ? '可选：顺路看一眼配电箱的总闸。' : story.breakerReported ? '总闸：已确认拉下，小蔡已记下。' : '总闸：已确认拉下，回站可以告诉小蔡。'}</p>` : '';
+    const html = progress.map(qt => `<section><strong>${esc(qt.name)}</strong>${qt.needs.map(n => `<p>${esc(name(n.id))}：仓库 ${n.stored} · 携带 ${n.carried} / 需 ${n.needed}</p>`).join('')}${qt.key === 'repair' ? hint : ''}</section>`).join('') || '<p>全部任务已交付。</p>';
+    const recalled = story.recall.length, offered = market || recalled > 0;
+    if (offered !== !this.q('[data-recall]').hidden || recalled !== this.recallShown) {
+      this.q('[data-recall]').hidden = !offered; this.recallShown = offered ? recalled : -1;
+      this.q('[data-recall-count]').textContent = `· ${recalled}`;
+    }
     const list = this.q('[data-quest-list]'); if (list.innerHTML !== html) list.innerHTML = html;
   }
   /**
-   * Stair destinations as HUD text in the pixel face, at the place the view keeps for them (below the stair marker, moved
-   * clear of the player). A destination briefly hides while its actual HUD box covers a drawn enemy body; the next frame
-   * measures it afresh so it returns as soon as the body leaves. On mall floors the interaction prompt names the current stair.
+   * Stair destinations as HUD text in the pixel face, at the place the view keeps for them beside the stair marker (clear
+   * of the player, the faced door's cue and, from the size measured here, this text's own box). A destination briefly
+   * hides while its actual HUD box covers a drawn enemy body; the next frame measures it afresh so it returns as soon as
+   * the body leaves. On mall floors the interaction prompt names the current stair.
    */
   private stairEls = new Map<string, HTMLElement>();
   private stairNames(f: PublishedView['frame']) {
@@ -924,37 +1042,65 @@ export class CoastSampleHost {
       el.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translateX(-50%)`; el.hidden = false;
       const r = el.getBoundingClientRect();
       el.hidden = bodies.some(b => r.left < b.x + b.w && r.right > b.x && r.top < b.y + b.h && r.bottom > b.y);
+      this.view.hudLabelSizes.set(l.id, this.worldBox(r));
     }
     for (const [id, el] of this.stairEls) if (!seen.has(id)) el.hidden = true;
   }
-  private prompt(t: Interaction | null, py: number) {
+  /** A client rectangle as a world box (where the view places stair labels). */
+  private worldBox(r: DOMRect) {
+    const a = this.view.clientToWorld(r.left, r.top), b = this.view.clientToWorld(r.right, r.bottom);
+    return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
+  }
+  /**
+   * The interaction prompt and the source list beside it. `story` is the breaker when E would check it (#83), `option`
+   * the breaker while it can be checked at all: then it is listed first beside the world target, by its own name.
+   */
+  private prompt(t: Interaction | null, py: number, story: StorySource | null = null, option: StorySource | null = null) {
     const el = this.q('[data-prompt]'), list = this.q('[data-choices]'), act = this.q('[data-act]');
-    if (!t) { el.hidden = true; list.hidden = true; this.choicesHtml = ''; act.textContent = '交互'; act.setAttribute('aria-label', '交互'); return; }
-    const hold = t.hold && t.hold.progress > 0 ? `　${Math.min(t.hold.progress, t.hold.required).toFixed(1)} / ${t.hold.required.toFixed(1)} 秒` : '';
-    el.innerHTML = (this.input.touch ? '' : '<kbd>E</kbd>') + esc(t.kind === 'exit' ? `${t.label} · 站稳按住 3 秒撤离` : t.label) + hold;
+    if (!t && !story) { el.hidden = true; list.hidden = true; this.choicesHtml = ''; act.textContent = '交互'; act.setAttribute('aria-label', '交互'); this.view.promptBox = null; return; }
+    const at = story ? story.at : t!.at;
+    if (story) el.innerHTML = (this.input.touch ? '' : '<kbd>E</kbd>') + esc(`检查 · ${story.title}`);
+    else {
+      const w = t!, hold = w.hold && w.hold.progress > 0 ? `　${Math.min(w.hold.progress, w.hold.required).toFixed(1)} / ${w.hold.required.toFixed(1)} 秒` : '';
+      el.innerHTML = (this.input.touch ? '' : '<kbd>E</kbd>') + esc(w.kind === 'exit' ? `${w.label} · 站稳按住 3 秒撤离` : w.label) + hold;
+    }
     el.hidden = false;
-    let p = this.view.worldToClient({ x: t.at.x, y: Math.min(t.at.y - AIM_H - 26, py - 56) }), above = true;
+    let p = this.view.worldToClient({ x: at.x, y: Math.min(at.y - AIM_H - 26, py - 56) }), above = true;
     const status = this.q('.cs-status').getBoundingClientRect(), h = el.offsetHeight || 24, half = Math.max(60, el.offsetWidth / 2);
     const hitsStatus = (x: number, top: number) => top < status.bottom + 4 && x - half < status.right + 4;
-    if (p.y - h < 8 || hitsStatus(p.x, p.y - h)) { p = this.view.worldToClient({ x: t.at.x, y: Math.max(t.at.y, py) + 14 }); above = false; }
+    if (p.y - h < 8 || hitsStatus(p.x, p.y - h)) { p = this.view.worldToClient({ x: at.x, y: Math.max(at.y, py) + 14 }); above = false; }
     let px = Math.min(innerWidth - half - 8, Math.max(half + 8, p.x));
     if (!above && hitsStatus(px, p.y)) px = Math.min(innerWidth - half - 8, status.right + half + 8);
     el.style.transform = `translate(${Math.round(px)}px, ${Math.round(p.y)}px) translate(-50%, ${above ? -100 : 0}%)`;
-    act.textContent = t.kind === 'exit' ? '按住撤离' : t.kind === 'container' ? '搜刮' : t.kind === 'ground' ? '拾取' : t.kind === 'door' || t.kind === 'entry' ? t.label.split(' · ')[0] : t.kind === 'note' ? '阅读' : t.kind === 'talk' ? '询问' : '交互';
-    act.setAttribute('aria-label', t.kind === 'exit' ? `${t.label} · 按住撤离` : t.label);
+    this.view.promptBox = this.worldBox(el.getBoundingClientRect());
+    if (story) { act.textContent = '检查'; act.setAttribute('aria-label', `检查 · ${story.title}`); }
+    else {
+      const w = t!;
+      act.textContent = w.kind === 'exit' ? '按住撤离' : w.kind === 'container' ? '搜刮' : w.kind === 'ground' ? '拾取' : w.kind === 'door' || w.kind === 'entry' ? w.label.split(' · ')[0] : w.kind === 'note' ? '阅读' : w.kind === 'talk' ? '询问' : '交互';
+      act.setAttribute('aria-label', w.kind === 'exit' ? `${w.label} · 按住撤离` : w.label);
+    }
     // 附近 (docs/LOOTING.md): ground items beside the container E opens, or several loose items where E takes the
     // nearest, picked up one by one from the list.
-    const nearby = t.kind === 'container' || t.kind === 'ground' && t.nearby.length > 1 ? t.nearby : [];
+    const nearby = t && !story && (t.kind === 'container' || t.kind === 'ground' && t.nearby.length > 1) ? t.nearby : [];
     if (!nearby.length) this.nearbyOpen = false;
-    if (t.choices.length > 1 || nearby.length) {
+    // The breaker beside a world target: both rows by name, the one E acts on marked; the world's own rows follow.
+    const pair = !!option && !!t && t.kind !== 'exit';
+    if (pair || t && (t.choices.length > 1 || nearby.length)) {
       list.hidden = false;
+      const wt = t!;
       const near = nearby.length ? `<li class="cs-near" data-near-toggle aria-expanded="${this.nearbyOpen}">附近 ${nearby.length}${this.nearbyOpen ? '　收起' : '　打开'}</li>`
         + (this.nearbyOpen ? nearby.map(n => `<li data-ground="${esc(n.id)}">拾取 · ${esc(name(n.item))} ×${n.qty}</li>`).join('') : '') : '';
-      const html = (t.choices.length > 1 ? t.choices.map(c => `<li data-id="${c.id}"${c.selected ? ' aria-current="true"' : ''}>${c.selected ? '▶ ' : ''}${esc(c.name)}${c.empty ? ' · 已搜空' : ''}</li>`).join('') : '') + near + (t.choices.length > 1 ? `<li class="cs-hint">${this.input.touch ? '点名称打开' : '滚轮切换'}</li>` : '');
+      const storyRow = pair ? `<li data-story="${esc(option!.ref.id)}"${story ? ' aria-current="true"' : ''}>${story ? '▶ ' : ''}检查 · ${esc(option!.title)}</li>` : '';
+      const mark = (selected: boolean) => selected && !story;
+      const worldRows = wt.choices.length > 1 || pair && wt.choices.length
+        ? wt.choices.map(c => `<li data-id="${c.id}"${mark(c.selected) ? ' aria-current="true"' : ''}>${mark(c.selected) ? '▶ ' : ''}${esc(c.name)}${c.empty ? ' · 已搜空' : ''}</li>`).join('')
+        : pair ? `<li data-world${story ? '' : ' aria-current="true"'}>${story ? '' : '▶ '}${esc(wt.label)}</li>` : '';
+      const rows = (pair ? 1 : 0) + Math.max(pair ? 1 : 0, wt.choices.length);
+      const html = storyRow + worldRows + near + (rows > 1 ? `<li class="cs-hint">${this.input.touch ? '点名称打开' : '滚轮切换'}</li>` : '');
       // Rewritten only when it changes: a row replaced between a finger's press and release loses the tap.
       if (html !== this.choicesHtml) { this.choicesHtml = html; list.innerHTML = html; list.querySelector('[aria-current]')?.scrollIntoView({ block: 'nearest' }); }
-      const side = this.view.worldToClient({ x: t.at.x + 26, y: t.at.y - AIM_H }), w = list.offsetWidth || 160;
-      const lx = Math.max(8, side.x + w + 8 > innerWidth ? this.view.worldToClient({ x: t.at.x - 26, y: 0 }).x - w : side.x);
+      const side = this.view.worldToClient({ x: at.x + 26, y: at.y - AIM_H }), w = list.offsetWidth || 160;
+      const lx = Math.max(8, side.x + w + 8 > innerWidth ? this.view.worldToClient({ x: at.x - 26, y: 0 }).x - w : side.x);
       list.style.transform = `translate(${Math.round(lx)}px, ${Math.round(side.y)}px) translate(0, -50%)`;
       // A tall list (附近 opened, many sources) reaches up into the prompt above the target. The prompt rises clear of it
       // instead of the list moving: the list stays under the finger, and below it are the touch buttons on short phones.
@@ -993,6 +1139,8 @@ export class CoastSampleHost {
     }
     // A gun equipped straight from a container (#26 F15) is announced by the panel that equipped it.
     else if (e.type === 'looted' && e.durability === 'committed' && e.to !== 'equip') this.toast(`获得 ${name(e.item)} ×${e.qty}${e.partial ? '（部分）' : ''}`);
+    // Only after its write: the text is the whole information, the sound (sound.ts) a hint.
+    else if (e.type === 'story-cue' && e.durability === 'committed') this.showStoryLine(e);
   }
   /** Radio line: the original shows Runtime messages (say) in a timed radio box. */
   private radio(text: string, seconds: number) { const r = this.q('[data-radio]'); r.textContent = text; r.hidden = false; this.radioLeft = Math.max(3, seconds || 6); this.placeRadio(); }
@@ -1030,6 +1178,7 @@ export class CoastSampleHost {
     if (this.view) { this.view.destroy(); lifecycle.views--; }
     // The parked canvas is reused by the next mount: drop the outro's grading.
     if (this.app) { this.app.canvas.style.filter = ''; parkApp(this.app); lifecycle.apps--; }
+    document.documentElement.style.removeProperty('--cs-dock');
     this.root?.remove();
     this.last = null;
   }

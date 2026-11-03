@@ -4,7 +4,9 @@
  * alone; every gun (the old three, G17 and M4A1) must land hits on the 5-tile target and the panel must count them; the M4A1 must fire while
  * the button is held; presses on the panel must never fire or turn the
  * aim; the hit-feel A/B switch must flip the view option and its label; the panel must fit 1280x720 and 1920x1080; abandoning settles in memory and reloads a fresh range. A phone page
- * without ?test=1 checks the touch layout and that no test hook exists there.
+ * without ?test=1 checks the touch layout and that no test hook exists there. The 弹种 row (special-rounds.ts) offers
+ * dragon's breath only to shotguns; a dragon's breath shot bursts, sets the target burning and leaves ground fire, and a
+ * tracer flashes where it strikes, all drawn by the view.
  */
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -269,6 +271,78 @@ try {
     assert.equal(fresh.weapon.id, 'pistol', 'the reloaded range starts over');
     assert.deepEqual(fresh.stats, { shots: 0, hits: { d5: 0, d10: 0, d15: 0, d20: 0, mover: 0 } });
     return { guns, rifle, feels, sizes, reloaded: fresh.weapon.id };
+  });
+
+  await test('range: 龙息弹 bursts and burns, 曳光弹 flashes, and the 弹种 row follows the gun', {}, '?range=1&test=1', async p => {
+    await running(p, 60000, HOOK);
+    const fire = () => p.evaluate(() => window.__bincovRange.fire());
+    /** Each 弹种 button: [round, pressed, disabled], after the panel has drawn a frame. */
+    const rounds = async () => { await frames(p, 2); return p.evaluate(() => [...document.querySelector('.range-panel').shadowRoot.querySelectorAll('[data-round]')]
+      .map(b => [b.dataset.round, b.getAttribute('aria-pressed'), b.disabled])); };
+    assert.deepEqual(await rounds(), [['ball', 'true', false], ['tracer', 'false', false], ['dragon', 'false', true]], "a pistol offers no dragon's breath");
+    // The moving target stands still, so the burning body can be found at its spot.
+    await p.locator('[data-act="mover"]').click();
+    await p.locator('[data-gun="shotgun"]').click();
+    await held(p, 'shotgun');
+    await p.locator('[data-round="dragon"]').click();
+    assert.deepEqual(await rounds(), [['ball', 'false', false], ['tracer', 'false', false], ['dragon', 'true', false]]);
+    assert.equal((await fire()).round, 'dragon');
+    let dragon;
+    for (let attempt = 1; attempt <= 6 && !dragon; attempt++) {
+      await running(p, 30000, HOOK);
+      await steady(p);
+      const at = await aimAt(p, 'd5'), shots = (await state(p)).stats.shots;
+      assert.ok(await clickUncoveredCanvas(p, at.x, at.y), 'the 5-tile target is covered');
+      if (!await p.waitForFunction(n => window.__bincovRange.stats().shots > n, shots, { timeout: 10000 }).then(() => true, () => false)) continue;
+      // The pellets (560 px/s) cross the 150 px in under 0.3 s; the burst, the burning target and the ground fire follow.
+      const seen = await p.waitForFunction(() => { const f = window.__bincovRange.fire(); return f.made.blasts > 0 && f.burning > 0 && f.fires > 0 && f; }, null, { timeout: 15000 })
+        .then(h => h.jsonValue(), () => null);
+      if (!seen) continue;
+      await p.screenshot({ path: resolve(out, 'dragon.png') });
+      dragon = { attempt, ...seen, hits: (await state(p)).stats.hits.d5 };
+    }
+    assert.ok(dragon, "no dragon's breath burst on the 5-tile target");
+    // A rifle cannot load dragon's breath: it goes back to its ordinary rounds and the button is off.
+    await p.locator('[data-gun="carbine"]').click();
+    await held(p, 'carbine');
+    assert.deepEqual(await rounds(), [['ball', 'true', false], ['tracer', 'false', false], ['dragon', 'false', true]]);
+    assert.equal((await fire()).round, null);
+    await p.locator('[data-round="tracer"]').click();
+    assert.deepEqual(await rounds(), [['ball', 'false', false], ['tracer', 'true', false], ['dragon', 'false', true]]);
+    let tracer;
+    for (let attempt = 1; attempt <= 6 && !tracer; attempt++) {
+      await running(p, 30000, HOOK);
+      await steady(p);
+      const before = (await fire()).made.stars, at = await aimAt(p, 'd10');
+      assert.ok(await clickUncoveredCanvas(p, at.x, at.y), 'the 10-tile target is covered');
+      const stars = await p.waitForFunction(n => window.__bincovRange.fire().made.stars > n && window.__bincovRange.fire().made.stars, before, { timeout: 10000 })
+        .then(h => h.jsonValue(), () => null);
+      if (stars) tracer = { attempt, stars };
+    }
+    assert.ok(tracer, 'no tracer star where the round struck');
+    // The colour row: red by default; the rainbow is picked, pressed alone and fired.
+    const colors = async () => { await frames(p, 2); return p.evaluate(() => [...document.querySelector('.range-panel').shadowRoot.querySelectorAll('[data-color][aria-pressed="true"]')].map(b => b.dataset.color)); };
+    assert.deepEqual(await colors(), ['red']);
+    await p.locator('[data-color="rainbow"]').click();
+    assert.deepEqual(await colors(), ['rainbow']);
+    // At the 15-tile target a round flies about 0.6 s, so it shows in a published frame even on slow software frames.
+    let rainbow = null;
+    for (let attempt = 1; attempt <= 4 && !rainbow; attempt++) {
+      await running(p, 30000, HOOK);
+      await steady(p);
+      const fired = (await state(p)).stats.shots, at = await aimAt(p, 'd15');
+      assert.ok(await clickUncoveredCanvas(p, at.x, at.y), 'the 15-tile target is covered');
+      rainbow = await p.waitForFunction(n => {
+        const b = window.__bincovRange.host.lastBatch.frame.bullets.find(x => !x.enemy);
+        return window.__bincovRange.stats().shots > n && b ? b.color : false;
+      }, fired, { timeout: 10000 }).then(h => h.jsonValue(), () => null);
+    }
+    assert.equal(rainbow, 'rainbow', 'a rainbow tracer in flight');
+    await p.screenshot({ path: resolve(out, 'rainbow.png') });
+    await p.locator('[data-round="ball"]').click();
+    assert.deepEqual(await rounds(), [['ball', 'true', false], ['tracer', 'false', false], ['dragon', 'false', true]]);
+    assert.equal((await fire()).round, null);
+    return { dragon, tracer, rainbow };
   });
 
   await test('range: phone layout without the test hook, by touch', { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true }, '?range=1', async p => {

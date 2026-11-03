@@ -17,6 +17,7 @@ import type { CarriedInventoryView, CoastServices, TargetRef } from '../raid-run
 import { itemArtwork } from '../art/item-images';
 import { esc } from '../html';
 import { SUPPLY_IDS } from '../rpg';
+import type { QuestMarks } from '../qol';
 
 type Source = 'container' | 'bag' | 'safe';
 /**
@@ -38,6 +39,8 @@ export interface InventoryHost {
   magazine(): number;
   /** A supply use committed (sound cue). */
   used?(): void;
+  /** Quest items to ring (qol.questMarks): the container rings `wanted`, the bag and safe `own`. None without it. */
+  questMarks?(): QuestMarks;
 }
 
 interface Drag { uid: string; source: Source; startX: number; startY: number; x: number; y: number; grabX: number; grabY: number; rotated: boolean; active: boolean; ghost: HTMLElement | null; pointerId: number }
@@ -58,10 +61,12 @@ export class InventoryPanel {
 
   /**
    * Grid cell in CSS px. Desktop uses the base UI's 54, where a three-character label (the fuse, carbine rounds) fits the
-   * pixel face at its native 16 px. Touch and very short screens stay compact; there a label that would not fit takes the
-   * small system face instead of being cut to its first character (see `labelFits`).
+   * pixel face at its native 16 px, and 72 on a 1600×1000 or larger window so the grid grows with the screen (#163 batch 2;
+   * coast.css widens the docked panel to match, keeping the details column beside the grids).
+   * Touch and very short screens stay compact; there a label that would not fit takes the small system face instead of
+   * being cut to its first character (see `labelFits`).
    */
-  private cell() { return this.host.touch() ? 40 : innerHeight < 600 ? 44 : 54; }
+  private cell() { return this.host.touch() ? 40 : innerHeight < 600 ? 44 : innerHeight >= 1000 && innerWidth >= 1600 ? 72 : 54; }
   private inv(source: Source): D.Inventory | null {
     if (source === 'container') { const ref = this.host.lootRef(); return ref ? this.host.services.lootInventory(ref) : null; }
     return this.host.services.inventoryView()?.[source] ?? null;
@@ -114,7 +119,7 @@ export class InventoryPanel {
   private slot(l: CarriedInventoryView) {
     const w = D.equippedWeapon(l), cell = this.cell(), sel = this.selected, i = this.item();
     const ready = !!sel && !!i && !this.equipError(sel.source, i);
-    return `<h3>主武器 <span>${this.host.touch() ? '选中枪后点这里' : '把枪拖到这里装备'}</span></h3><div class="cs-slot${l.weapon ? '' : ' empty'}${ready ? ' ready' : ''}" data-equip-slot role="button" tabindex="0" aria-label="主武器槽：${esc(w.name)}" title="把背包或搜刮箱里的枪拖到这里装备" style="width:${3 * cell + 18}px"><span class="inventory-art" style="min-height:${cell - 14}px">${itemArtwork(l.weapon ?? 'knife', 3 * cell, cell - 14)}</span><b>${esc(w.name)}</b><span>${w.magazine ? `弹匣 ${this.host.magazine()} / ${w.magazine}${l.relief ? ' · 救济' : ''}` : '随身匕首 · 始终保留'}</span></div>`;
+    return `<h3>主武器 <span>${this.host.touch() ? '选中枪后点这里' : '把枪拖到这里装备'}</span></h3><div class="cs-slot${l.weapon ? '' : ' empty'}${ready ? ' ready' : ''}" data-equip-slot role="button" tabindex="0" aria-label="主武器槽：${esc(w.name)}" title="把背包或搜刮箱里的枪拖到这里装备" style="width:${3 * cell + 18}px"><span class="inventory-art" style="min-height:${cell - 14}px">${itemArtwork(l.weapon ?? 'knife', 3 * cell, cell - 14)}</span><b>${esc(w.name)}</b><span>${!l.weapon ? '随身匕首 · 始终保留' : w.magazine ? `弹匣 ${this.host.magazine()} / ${w.magazine}${l.relief ? ' · 救济' : ''}` : '没装弹匣'}</span></div>`;
   }
   /** Why `item` cannot go into the weapon slot from `source`, or null. Bag space for the swap is the Runtime's check. */
   private equipError(source: Source, item: D.Item) {
@@ -138,10 +143,10 @@ export class InventoryPanel {
   private containerName() { return this.containerLabel; }
 
   private grid(inv: D.Inventory, source: Source) {
-    const cell = this.cell(), sel = this.selected;
+    const cell = this.cell(), sel = this.selected, marks = this.host.questMarks?.(), ring = marks && (source === 'container' ? marks.wanted : marks.own);
     const items = inv.items.map(i => {
-      const d = D.ITEMS[i.id], size = D.itemSize(i), on = sel?.uid === i.uid && sel.source === source;
-      return `<div tabindex="0" role="button" aria-label="${esc(d.name)} × ${i.qty}" aria-pressed="${on}" title="${esc(d.name)} × ${i.qty} · ${D.itemWeight(i).toFixed(2)} kg" data-uid="${i.uid}" data-source="${source}" data-kind="${d.kind}" class="item ${on ? 'selected' : ''}" style="left:${i.x * cell + 1}px;top:${i.y * cell + 1}px;width:${size.w * cell - 2}px;height:${size.h * cell - 2}px"><span class="inventory-art">${itemArtwork(i, size.w * cell - 10, size.h * cell - 27, !!i.rotated)}</span><span class="item-label ${i.relief ? 'relief' : ''} ${labelFits(d.short || d.name, size.w * cell) ? '' : 'tight'}">${esc(d.short || d.name)}</span>${i.qty > 1 ? `<span class="qty">${i.qty}</span>` : ''}</div>`;
+      const d = D.ITEMS[i.id], size = D.itemSize(i), on = sel?.uid === i.uid && sel.source === source, need = !!ring?.has(i.id);
+      return `<div tabindex="0" role="button" aria-label="${esc(d.name)} × ${i.qty}${need ? '，任务需要' : ''}" aria-pressed="${on}" title="${esc(d.name)} × ${i.qty} · ${D.itemWeight(i).toFixed(2)} kg${need ? ' · 任务需要' : ''}" data-uid="${i.uid}" data-source="${source}" data-kind="${d.kind}" class="item${on ? ' selected' : ''}${need ? ' need' : ''}" style="left:${i.x * cell + 1}px;top:${i.y * cell + 1}px;width:${size.w * cell - 2}px;height:${size.h * cell - 2}px"><span class="inventory-art">${itemArtwork(i, size.w * cell - 10, size.h * cell - 27, !!i.rotated)}</span><span class="item-label ${i.relief ? 'relief' : ''} ${labelFits(d.short || d.name, size.w * cell) ? '' : 'tight'}">${esc(d.short || d.name)}</span>${i.qty > 1 ? `<span class="qty">${i.qty}</span>` : ''}</div>`;
     }).join('');
     return `<div class="grid" data-grid="${source}" data-cell="${cell}" style="width:${inv.w * cell}px;height:${inv.h * cell}px;--cell:${cell}px">${items}${this.placementCells(inv, source, cell)}${inv.items.length ? '' : '<div class="empty-hint">暂无物品</div>'}</div>`;
   }

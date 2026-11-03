@@ -1,32 +1,134 @@
-## 2026-10-29 · #143 审阅调整与正式接入决定
+## 2026-11-03 · README 精修（维护者需求）
 
-维护者转达开发者一致决定接入游戏并采纳审阅意见。[正式接入计划](docs/tasks/skill-tree-integration.md)现为后续开发入口；下方“隔离研究交付”是此前阶段的历史记录，授权与数值说明以本节和计划为准。本轮沿 [PR #148](https://github.com/xuys2025/escape-bincov/pull/148) 的 `Nekomole:feat/skills-local-spike` 续作，从 head `8b861591` 同步最新 main `d60e7c0db6e2783244422736656bc571edc0d879`，只在独立工作树调整；未操作他人的未提交工作。准确最终 head、CI 与交付状态见原 PR。
+分支 `docs/readme-polish`，基线 main `d441c491`。README 上次按 `b475b1b`（10-23）核对，之后合入的改枪 M2–M4、市场剧情、暴击 Perk、打击感、室内墙体、商店页签、任务物品绿框、官网和曳光弹/龙息弹都没写进去或写成了“待实现”。
 
-压弹改为玩家按堆指定有限数量，默认不消费；未完成任务保留普通泵机零件，救济不抵扣需求，回收或合堆不扩大授权，满包失败不扣材料或批准量。`SkillMechanicSeed.completedQuests` 严格校验；资源研究格式 v2 拒绝旧 v1，技能进度/经验研究格式仍为 v1，正式存档未变。入口是 [资源机制](src/skill-tree-mechanics.ts) 与[反例测试](tests/skill-tree-mechanics.test.ts)。原版在42秒吃完3个任务零件的失败已经复现并保留；新增7项回归覆盖授权、任务、重试、撤销、多堆和全枪种适用性。
+- 改动：重写玩法表（加剧情、改枪、敌人、射击手感）、出击区域（商场布局四版）、试枪场弹种、改枪说明、操作表（院子 `H`/`F1`，行动 `J` 见闻、`V` 切档；原“只有 M4A1 连发”改为按 `src/gunsmith/catalog.ts` 的九把连发枪）、当前边界和文档导航；开发命令表只留常用项，其余指向 `docs/CHECKS.md`。
+- 截图：六张 1920×1080 在 `d441c491` 构建上重拍，放在 `docs/readme/`，拍法与测试接口用到哪里写在 [截图说明](docs/readme/README.md)；旧首图和县域截图仍留在原任务目录，没删。
+- 验证：纯文档。`check:ci`（含入口文档链接与路径守卫）通过；README 里的命令、按键、枪械模式、区域版本已对照源码。
+- 遗留：手机截图没重拍；真人试玩不在本任务范围。
 
-Windows / Node24.21.0 / pnpm11.19.0：全仓单测 **1202/1202**、工程检查 **139/139**、严格TypeScript/构建/离线打包通过。复用目录锁文件一致；pnpm默认依赖目录检查要求重装并因无TTY中止，本轮使用命令级 `--config.verify-deps-before-run=false` 执行 test/check:ci/build，随后直接执行 `node scripts/package.mjs`，未修改依赖或仓库配置。便携ZIP 6,101,796 B，web ZIP 6,097,287 B。正式2170个构建输入仍无技能研究模块，打包脚本一致，HTML SHA-256 `10951b5dca0dd2594c88d0690f5532efad7a515555c38886cf8578831afa6392`。日志与构建隔离数据在忽略的 `test-results/skill-review/`，首败 `press-before.log`；生成物不提交。
+## 2026-11-02 · 曳光弹与龙息弹，第一步：试枪场（维护者需求）
 
-后续按计划S0～S7推进：先完成48项真实作用点、旧权益补偿与版本合同，再做同一SaveSession事务内的成长/世界/物资、战斗生存与搜索、六机制、界面和自愿转换、两图实玩与发布验收。旧角色默认保留现有属性和Perk，合同批准前不开转换；不把研究全量回放放进逐帧运行。当前无正式UI接入，未重做浏览器/真实旧端/真机/长期平衡验收，不据此声称已上线或自行合并。#143保留开放，承担剩余实施和总验收。
+分支 `feat/special-ammo`，基线 main `2b3fd7e9`。维护者要曳光弹和龙息弹，“要炫酷爆炸的那种”；问答定下先只在试枪场能打、存档不动，龙息弹只伤敌人，六个弹组都有曳光版；本地试玩后又要曳光颜色预设和彩虹曳光。[任务记录](docs/tasks/special-rounds.md)。
 
-## 2026-10-29 · #143 三分支技能：隔离研究交付（历史）
+- 实现：规则在新的 `src/special-rounds.ts`（`roundFits`、`DRAGON`、`FireField`、`TRACER_COLORS`）。Runtime 的 `round` / `tracerColor` 只由 `ShootingRange.setRound` / `setTracerColor` 设置；`shoot` 给弹丸记 `specials`（龙息弹 560 像素/秒、伤害 0.6 倍），落地经 `land` 排队，`updateFire` 在子弹之后炸开（34 像素、12 点、每枪每人一次）、点燃（每 0.5 秒 4 点共 3 秒，无视护甲）并留地火（2.5 秒）；`damageEnemy` 加 `fire` 参数（hurt 原因 `fire`），`damageLayerEnemy` 加 `through`。都不进检查点，重载和换层时 `quench`。契约加 shot / BulletView 的 `round`、`color`，`blast` 事件，ActorView `burning`，ViewFrame `fires`。画面 `coast-view/fire-fx.ts` 与 `art/fire.ts`（像素火球 8 帧、火苗 4 帧、焦痕、十字火花），scene 的 `drawSpecial` 画弹道，声音 `SynthAudio.blast` / `flame` / `crackle`。试枪场面板加“弹种”“曳光颜色”两行，命中统计不计火。字体子集加 7 个字（1213 字）。
+- 检查：新单测 `special-rounds.test.ts` 8 项；`test:range` 新增第二个用例（龙息弹炸开、着火、地火，曳光火花，彩虹在飞）。
+- 验证：见任务记录“验证”一节。`test:shooting` 的 k（拥挤战斗的声音预算）在本机失败，用 main `2b3fd7e9` 的构建对照同样连续两次失败，属于本机音频环境，以 CI 为准。
+- 遗留：第二步（物品、弹匣记弹种、存档版本、平衡）未开工；经典（非分层）行动路径接了但没测；真人/真机未验。
 
-起点 main `275fafd`，研究与稳定性验证基线为最新 main `cf5845e9ba0b530fe2b8be4bb69c431a8049efa3`。[PR #148](https://github.com/xuys2025/escape-bincov/pull/148)，head `Nekomole:feat/skills-local-spike`，源码提交 `84748f819a955de2be196f286ed5fbe9e055a85a`；后续交接索引仅文档更新，准确head／检查／审阅状态以PR为准。用户已确认提交该隔离研究版，授权不包含合并 main 或额外实施正式存档接入。未迁移旧 Perk，未改正式存档或正常游戏入口。
+## 2026-11-02 · 任务物品绿框高亮（维护者需求）
 
-本轮已复现并修复三项：[详情与唯一反例入口](docs/tasks/skill-tree-research.md#稳定性复核已复现并修复的问题)、[stability 测试](tests/skill-tree-stability.test.ts)。死亡敌人的正极小血量被epsilon连续性放行，能按新ID重结击杀；暂停活动推进限时效果时钟；长ID事件越过检查点上限后才无法导出。现分别严格匹配权威HP、暂停只接受停止的行动时钟标记、返回候选前检查400万字符上限。保留合法极小HP、正常闲置计时与原状态不变反例；不把错误研究日志静默修复。主线同步的两处文档冲突保留双方内容，保护快照 stash `37fdf6a`。
+分支 `feat/quest-item-highlight`，基线 main `33adc85b`。维护者要任务需要的物品高亮（金边或绿边），并且“智能显示”：凑够以后外面的不再标，背包里的照样标。[任务记录](docs/tasks/quest-item-highlight.md)。
 
-本轮最终验证：技能专项 **113/113**（新增8项），全仓 **1195/1195**（研究共113项）、本地工程守卫 **139/139**、package含严格TypeScript通过。300随机构筑／9600条件组合、200不规则时间分片／读档、当前全部20枪种与弹药、逐嵌套对象未知字段均通过。四配置试验页通过；100轮＋1800次操作无脚本错误、存储访问／网络请求；强制GC后DOM435、监听器61保持，堆1361840→1513988字节，未声称长期泄漏验收。日志为 `test-results/local-prep/skill-tree-stability-{targeted,full-tests,ci,package}.log`，首败为 `*-repro.log` 和 `*-size-repro.log`；浏览器原始结果在 `test-results/skill-tree-lab/stability-browser-results.json`。正式游戏2170构建输入不含研究模块，脚本与打包HTML一致，SHA-256 `83750c8bf465fc90e2abcaabf73e8478a8ea087761ef06f3a2e6b34746526fc3`，证据 `skill-tree-stability-build.json`。完整正式浏览器、真实旧端、真机及数小时连续游玩仍未验。
+- 实现：`qol.questMarks` 给出两组物品：`own`（未交任务要的，标在玩家自己的格子上，交付前一直标）和 `wanted`（还没凑够的，另外标在物资箱、尸体、商人货架、待买上）。“已有”按任务卡的数：行动中仓库加身上，院子里仓库、背包、安全箱。行动面板经 `InventoryHost.questMarks`，院子经 `gridHtml` 的 `marks`。用绿色而不是金色，因为悬停和选中已经是琥珀金；绿边、浅绿底、空角上的小三角，提示文字加“任务需要”。旧版页签未改；存档与规则不变。
+- 检查：qol.test.ts 新增 4 项（两项格子输出在把 `need` 改成恒为否时失败）；`issue26-raid-inventory` 新增 `quest-item-rings`（1280、1920：真实开箱、实际绿框、凑够后箱内变普通）；`shop-feedback` 新增 `quest rings`（1280、1920、844×390：货架、仓库、待卖、整备，不写存档）。
+- 验证（本机 Chrome，构建 `e0cc9552…`）：1122 单测、package、check:ci 139；issue26-inventory 20/20、shop-feedback 31、shop-drag 21/21、loot 48、ui 38、qol 27、issue26-station 18/18。
+- 遗留：旧版页签没加；真人/真机未验。
 
-当前实现：[48 项候选与唯一机制说明](docs/tasks/skill-tree-research.md)。目录保持旧 24 项稳定前缀，增加至每支16项；各支最多15点，中层5点／专精10点门槛，2点机制节点独立互斥。`skill-tree.ts` 增加可脱离原对象的效果预编译；经验日志冻结出击配置并核对原生来源、幂等与条件触发。新增 `skill-tree-mechanics.ts` 从真实库存／枪械配置重放自动续装、废料压弹、代谢回血、应急绷带、标记回收和有限扫描，复用既有 `reloadMagazine`、`addItem` 和严格库存校验；追踪救济来源、保护名单、每局预算、时间分片与满包整笔回滚。经验与资源仍是隔离的两个研究契约，未来正式组合必须走既有事务。随机额外物资仍仅为计划；正式游戏未导入任何研究组件。
+## 2026-11-01 · #83 市场剧情：前端接入（Opus）
 
-上一扩充阶段验证（main `03cfb77`、Node24.19.0／pnpm11.19.0／Windows）：1161单测／113守卫／package通过；旧日志为 `test-results/local-prep/skill-tree-expanded-final-{tests,ci,package}.log`。108套构筑／12960条混合命令等仍在本轮重新执行。独立试验页 `test-results/skill-tree-lab/lab.html` 使用真实研究模块，重建为 `node test-results/skill-tree-lab/build.mjs`，四配置检查为 `node test-results/skill-tree-lab/browser-check.mjs`，100轮压力为 `node test-results/skill-tree-lab/stability-browser.mjs`（先加载本地 Enter-Dev.ps1）；原始素材与辅助脚本均为忽略的本地证据，不属于正式UI。
+续作同一 [PR #168](https://github.com/xuys2025/escape-bincov/pull/168)、分支 `feat/story-market-83`，在底层 head `79944de` 之上只做前端表现，复用原剧情与存档接口。准确 head 与 CI 见该 PR，保持 Draft。
 
-首败与修复：早期修正未知输入类型收窄、数组事件种类被键转换接受及必需时间为 null 的漏洞，并保留反例。首次 package 的中文字体覆盖失败通过移除规则中的显示文案解决，中文名称集中在候选说明；没有改字体或关闭守卫。本次扩充的首次全测因测试夹具重复学习满级技能失败，修正夹具后全过；原日志保留 `skill-tree-expanded-tests-first.log`。资源测试曾因电池占两格的满包夹具重叠被严格拒绝，改为现有放置函数生成合法满包后验证回滚。规则核心仍接受纯模块守卫，资源模块及其共享解码依赖接受传递 headless 守卫；没有为研究放宽 DOM 检查。
+- 已做：院子电台面板的小蔡卡片、固定尺寸对话框与六个话题、见闻页、值班册与维修单缺额；行动内冷柜／配电箱／工具柜画面、总闸「检查」提示与 E／触屏仲裁、一次一条的字幕（危险优先、过时丢弃）、两段合成声、见闻面板（按钮与 J）、任务卡提示与地图工具柜标记；默认沿海街区出击改走 `coast-story-v1`（院子与旧页签同一规则）。补了 4 个字形。
+- 验证：新增 `test:market-view` 12 步（CI batch-3）；细节和路线计时见 [接入说明](docs/tasks/market-story-core.md#前端接入opus2026-11-01) 与 PR。
+- 世界生成一处修正：普通物资箱会落在总闸锚点上（种子 1–300 中 27 个），首次 E 被总闸拿走、`test:loot` 失败；保护区由工具柜扩到两个锚点（`protectMarketAnchors`），只迁移初始实体，有负对照。
+- 2026-11-02 补修：站内小蔡对话在切窗口、页面隐藏、离开页面后原样留着且会话没释放，回来按 Enter 会提交聚焦的回答。现在三种信号都结束对话（含供电动画期间暂存的会话），对话框原位回到话题列表；回归为 M12。
+- 2026-11-02 合入 main `33adc85b`（#170 第二批 UI 打磨）。冲突在 `station-view/ui.ts`（main 删了 `inset`，保留小蔡会话和失焦释放）、`coast-view/host.ts`（保留 main 的 `--cs-dock`，并保留总闸提示）、`coast.css` 和两份文档。小蔡卡片、对话页、见闻页和行动字幕改用统一变量，桌面 11px 的字提到 12px，电台面板改用共用居中框。market-view 加了字号和框的检查，截图全部重拍，并新增 1920 任务页和手机见闻两张。之后 main 又合入 #171（任务物品绿框），再合一次 `2b3fd7e9`，只有文档冲突。工具柜里的维修件也显示绿框，截图按最终版本重拍。
+- 待真人：真机听感与触屏、两条路线的真人自然试玩、跳过长对白／主动调查的理解、站内对话节奏。#83 未完成，未合并、未部署。
 
-上一扩充阶段的构建隔离与性能历史：main `03cfb77` 的1646输入未含研究模块，旧HTML SHA-256 `a1904981…c21c45`；当前制品以本轮新证明为准。相同合成日志的旧／预编译实现（各7次中位数）：6000条27.86→13.14ms，8192条36.79→16.65ms，10万次效果计算约65ms，数据为 `test-results/local-prep/skill-tree-expanded-benchmark.json`。这不是当前主线的正式战斗性能，也没有改变全量回放不宜生产逐帧使用的边界。
+## 2026-11-01 · #83 市场剧情：底层完成，前端交给 Opus
 
-接入前仍需解决：旧 Perk 的逐项迁移／补偿；在既有 `SaveSession` 同一事务中提交角色、技能和世界，接入版本与原始备份；物资拆分／合堆后的原生来源传播；正式触发时钟与暴击快照来源；实际掉落、提示范围、声音与负重调用点。研究格式的 `progress` 由日志重放验证，不能作为可选字段直接塞入现有存档。已有测试证明正式扩展解码器拒绝技能字段、当前暴击来源白名单拒绝新来源，因此不能靠添加可选属性或直接叠加概率接入。现有体质训练量混合了运动、恢复和训练效率／递减，也不能直接当作新生存经验；需从正式事件计量实际生命变化、物品类型和合格伤害。
+维护者明确只做非前端表现。[PR #168](https://github.com/xuys2025/escape-bincov/pull/168)，分支 `feat/story-market-83`，基线 main `8a28da9873e5188e13053f894e5b6bbb0ae10dc8`；#83 同一实施 PR 保持 Draft，后续 Opus 沿本分支接线，不另开重复任务。准确 head 与 CI 见该 PR。
 
-下一步入口：[候选与机制说明](docs/tasks/skill-tree-research.md)、[规则与计划](src/skill-tree.ts)、[经验日志](src/skill-tree-research.ts)、[资源机制](src/skill-tree-mechanics.ts) 及四组测试（含 stability）。按本研究范围处理 PR 审阅与 CI；正式接入合同及阶段验收仍归 #143，不能把研究组件当作完整玩法交付或自行合并。同步 main 前的保护快照与忽略目录中的补丁只作历史备份，提交后以 PR 源码为准。
+- 已做：维修原规则复用、60 条来源内的缺额工具柜、新世界登记、实际调查与按局去重、18 话题条件/显式选择、单笔事务/失败回滚、v2–v9 → v10 迁移与完整备份。原旧世界恢复、维修 420/扩建 600、样本/船册不变。没有改前端视图或启用默认新市场入口。
+- 验证：完整单测 1126/1126、工程守卫 139/139、TypeScript 与 package 通过；真实浏览器剧情接口六组、通用存档回归、四份固定旧客户端的扩展兼容回归通过。便携 ZIP 6,128,719 bytes，不使用已取消的 5 MiB 门槛。最终远端 CI 以 PR 准确 head 为准。
+- 接口和任务书：[市场剧情底层与 Opus 接入说明](docs/tasks/market-story-core.md)。特别保留“观察≠报告”；带真实总闸观察的 tell 分支确实说出了闸位，因此同笔记 reported；unchecked 不补造事实。读回顾不写状态，保存成功后才播 cue/成功对白。
+- 待 Opus：新市场出击开关、场景锚点、小蔡对白面板、见闻回顾、字幕/音效优先级与输入释放；随后做各尺寸、静音、自然两路线和真人理解。#83 总体未完成，未合并、未部署。#164 文学与 #161 节奏线仍由原 PR 承接。
+
+## 2026-11-01 · 前端精致度第二批：共用变量、固定面板框、格子随屏幕放大（#163）
+
+分支 `fix/ui-polish-batch2`，基线 main `ca59605e`，叠在第一批 #165 的 head `43c2ee3b` 上（先合 #165）。维护者从三套原型（A 院子琥珀 / B 标题黄铜 / C 行动卡其；右侧固定宽 / 居中统一大框）里选了配色 A 和居中统一大框。
+
+- 实现：新增 `src/ui-tokens.css`（16 阶中性色、一种强调色、状态色、字体角色、12px 起的字号、间距），七个样式表的写死颜色按原色系归到这些变量，只留纯黑白和行动战斗特效的具名变量；桌面小于 12px 的字提到 12px，像素字只用 16/32px，旧页签去掉 Consolas。院子所有页签（含出击）共用一个居中框（距窗口 12px，大窗口 5vh 5vw），删掉相机为停靠面板让位的 `panelInset`；格子按框算、上限 88px，商店右栏按格子定宽；旧页签商店 `shopCell` 54–80px；行动背包 1600×1000 以上 72px，面板同时加宽到 1480px。出击页换成统一标题栏后，简报栏吸收多出的宽度，地图区不宽于 3:2。
+- 检查：新增单测 `ui-tokens.test.ts`（写死颜色、未定义变量、加载顺序；main 的 range.css 作反例报 21 处）、station H20（七个页签框一致、字号与像素字、1920 格子 ≥64px；main 构建失败）、ui-review 的旧页签字体角色和两处格子尺寸。
+- 验证：main `ca59605e` + #165 + 本批构建 `5c0bd5a3…`：1115 单测、package、check:ci 139、station 86/86、ui、shop-feedback 28、browser、gunsmith-bench 20、shop-drag 21、hideout 8、issue26-station 18、issue26-inventory 18、loot 48、raid-default 11、save-browser 17、tactical 8、art、title 27、desktop-input 12、mobile 11、mobile-ux 13。四个尺寸前后对比图见[任务记录](docs/tasks/ui-polish-batch2.md)。
+- 遗留：1280×720 下格子里的物品名和数量约 10px（格子 <44px，要改整备或商店布局才能到 12px，待维护者定）；行动面板布局归第三批；真人/真机未验。
+
+## 2026-10-31 · 楼梯标签贴着自己的楼梯（#26 F07/F11）
+
+[PR #169](https://github.com/xuys2025/escape-bincov/pull/169)，分支 `claude/sad-tharp-f6c48e`，基线 main `278b7e24`（已同步 `8a28da98`、`ca59605e`）。#154 时登记的余项：站在楼梯旁时旧规则（S04b 那条）把楼梯标签挪到角色脚下，探针扫居民楼全部站位，最远离楼梯 66 像素，会压到别的门的地面标记、正对门的通行带和暖光；二楼标签平时就压在储藏室门的标记上，地下标签会被「E 开门」盖住。做了三个本地原型（先下后上 / 先左右 / 固定上方），维护者选了 A。`stairLabelPlace` 只在楼梯图四周选位置：下 → 上 → 离玩家远的一侧 → 另一侧，不盖玩家和正对门的暖光、通行带，门标记、提示、别的楼梯和标签能避就避；宿主把量到的 HUD 字框和提示框写回视图，碰到可见敌人仍只隐藏（S03c）。只改显示。新增 S07（两档桌面和触屏子集都跑；main 构建三档都只有 S07 失败）。细节、验证与截图见[任务记录](docs/tasks/stair-label-beside-stairs.md)；维护者 11-01 授权合并，以 PR 状态为准；真人/真机未验；二楼、地下楼梯图被墙挡住属于原有美术问题，没改。
+
+## 2026-10-31 · 两份行动报告合一（#163 待定项）
+
+[PR #166](https://github.com/xuys2025/escape-bincov/pull/166)，分支 `fix/one-raid-report`，基线 main `278b7e24`。核对发现结算写入、写入失败重试、备份导出和撤离/死亡音效都在局内「正在保存结算」面板，两份报告只负责显示（#163 原写“结算页负责音效与重试落点”不准确）。做了对照表（A 保留旧结算页 / B 保留院子报告 / C 合并原型，三尺寸真实截图），维护者选 B，并同意不等 #165 先做。
+
+- 实现：`coast-view/sample.ts` 的 `finish` 改调页面 `settled` → `returnToStation`，结局动画后直接走进院门、只弹院子报告。旧结算页只在页签入口或 `returnToBase` 被拒时兜底，从它返回用 `returnToStation(true)`，不再弹第二份；院子起不来时报告在页签界面以对话框出现。存档规则不变。
+- 测试：7 个院子模式脚本改测新流程；`yard-entry.mjs` 新增 `watchOldPage` / `yardReport`（断言途中没画旧页面）与 `atRaidRelease` / `releasedState`（院子紧接着接管 Pixi 应用，停放状态改在释放瞬间读，回收检查放到院子起来之后）；station 新增 G8/G9/G10 兜底反例。
+- 验证（本机 Chrome，构建 `2e4eb2aa…`）：1113 单测、package、139 工程守卫；`test:station` 84/84，save-browser 17/17，raid-default 11/11，coast-render-targets 5/5，station-capability 4/4，browser、ui、systems、station-relief/tier1/tier2、hud-release、desktop-input、mobile 通过。station-round2-recheck（J,K,R）4/8、coast-lifecycle（review 类）1/5，与 main 原脚本逐项相同，改动处的检查通过。详见[任务页](docs/tasks/one-raid-report.md)。
+- 未做/待办：#165 合并后同步 main 重跑；真人/真机未验；院子报告没有“进度已保存”这句（未要求改）。
+
+## 2026-10-31 · 官网首页：Pages 根目录是官网，游戏移到 `play/`
+
+分支 `feat/official-site`，基线 main `278b7e24`。维护者要 Pages 首页就是官网，点一下才进去玩；原型先在仓库外做好再接入。
+
+- 官网源码 `site/`；`scripts/site/build.mjs` 组装 `pages/`：官网 + 从 `assets/` 原样复制的游戏美术 + `play/index.html`（与 `dist/index.html` 逐字节相同）。CI build job 运行 `pnpm site:build`，`Deploy Pages` 改部署 `pages/`，校验和多记两项。
+- 旧根链接带游戏参数时转到 `play/`；存档按网站保存不受影响；离线包、发布与清单不变。
+- 检查：新增 `pnpm test:site`（batch-3，16 步：两档桌面、手机、减少动态、旧链接、按住撤离进游戏、零错误零外部请求）；本地 16/16，`pnpm test` 1113、`pnpm check:ci` 139、`pnpm package` 通过。
+- 遗留：新加坡镜像脚本要改从 `play/` 取 HTML（未改前安全跳过、停在旧版本）；真机、Safari、Firefox 未测。
+- 同日接入 Sol 的十六张官网图（`site/assets/art/`，哈希与交付说明一致）：图标、分享卡片、三张半身像、五张敌人档案像、三层撤离夜景；`test:site` 增至 18 步。详见 [任务记录](docs/tasks/official-site.md)。
+
+## 2026-10-30 · 商店整体布局：购买/出售页签与交易单（#26 F03）
+
+[PR #159](https://github.com/xuys2025/escape-bincov/pull/159)，分支 `claude/f03-shop-layout-1be71c`，基线 main `7d982a6f`。核对时发现旧三栏把钱分散在标题和底部小字里，任务警告还会让结算栏变高、1280×720 下整个面板缩小、格子挪位。做了三个本地原型（两侧对面 / 买卖页签 / 交易清单），维护者选了 B。院子商店左边是商人这边的「购买 / 出售」页签（购买页：筛选、货、待买；出售页：待卖和本单明细），右边一直是仓库和交易单（现有现金、买入、卖出、结算后、结算）；两页叠在同一格、隐藏页 inert，切页签、加物品、警告都不移动格子。购买页双击或拖到「出售」页签的仓库物品会进待卖并转页。手机沿用两栏切换，底部换成交易单。交易规则、ShopSession、存档和旧版页签商店都不变。1113 单测、package、139 项工程守卫，商店反馈 28/28（新增 F03 B，main 构建对照失败）、商店拖放、旧页签据点、改枪工作台、存档浏览器、院子完整验收合并前 80/80、合并后 79/80（I3 是 main 上也复现的菜单切换超时，已由 #160 修复）、手机 13/13 通过。细节、截图与边界见[任务记录](docs/tasks/shop-trade-tabs.md)；未合并、未发布，真人/真机未验。
+## 2026-10-31 · 前端精致度第一批（#163）
+
+分支 `fix/ui-polish-batch1`，基线 main `61cd6c55`。维护者要求检查前端哪些地方不够精致，结论分五批登记在 [#163](https://github.com/xuys2025/escape-bincov/issues/163)。本分支只做第一批，只改显示：桌面行动的页面提示 `#toast` 抬到按键栏上方，背包/搜刮面板停靠时抬到面板上方（宿主写 `--cs-dock`）；院子页签内边距收窄，七个页签在 560px 面板放得下；整备携行重量不再折行、武器行按项换行、小节编号 01–04；桌面结算页铺满窗口、卡片保持整数倍；有键盘且宽 ≥900px 时快捷栏居中。新增 `test:station` H19 和 `test:ui` 的提示/结算页几何断言，原 main 构建都失败。细节、验证和截图见[任务记录](docs/tasks/ui-polish-batch1.md)。“两份行动报告合一”待维护者决定；未合并、未发布，真人/真机未验。
+
+## 2026-10-30 · 手机标题菜单被检查点重绘收起（`test:station` I3，#61）
+
+分支 `fix/station-tab-menu-repaint`（[PR #160](https://github.com/xuys2025/escape-bincov/pull/160)），基线 main `e3a74961`。I3（390×844 触屏：整备 → 标题“切换功能”菜单 → 修理铺）长期报 `timeout: arms tab`，原因在游戏：菜单展开只是 `.ptabs` 上的 `open` 类，五秒检查点提交后 `UI.refresh()` 重绘整块面板，把它收起。插桩看到手指按在“修理铺”上之后、抬起之前面板被重绘，抬手的 click 落在下面的 `.gear-actions`。步骤节奏和检查点相位基本固定，所以 main 几乎必现、#159 构建 2/4 通过。玩家同样会遇到：菜单最多 5 秒自己收起；设施面板每 30 帧刷新，约半秒就收起；手指正落在页签上时点到面板内容。
+
+- 修复：`refresh()` 重绘前记下菜单是否展开，重绘后加回；玩家自己的操作和切换面板引起的重绘照旧。
+- 测试：I3 展开菜单后等游戏自己的一次面板重绘，断言仍展开再点修理铺（不再靠时序碰运气）；新增 I3b 在设施面板等两次刷新。
+- 验证（本机 Chrome）：新 I3+I3b 修复构建 10/10，原 main 构建 3/3 失败；main 原测试不改，修复构建 5/5、原构建 2/2 `timeout: arms tab`；1113 单测、package 通过；完整 `test:station` 81/81。设施面板两次刷新后的真实截图：[原构建（已收起）](docs/tasks/station-tab-menu/facility-390x844-before.png)、[修复后（仍展开）](docs/tasks/station-tab-menu/facility-390x844-after.png)。未验：手机真机。
+- H8、H16 用 Playwright `tap()` 走同一菜单，窗口短，同一原因下也可能偶发，修复后一并消除，未改测试。
+
+## 2026-10-30 老栓精工美术（#155，续接已合并的 #150）
+
+绘图起点 M4 `40d43c1`，检查时合入 main `e5c660e`；#150 绘图期间已合并，按 #155 最新交接快进到 main `7d982a6`，新开后续美术 PR。Sol 交付 `assets/gunsmith/incoming/m4-premium/`：任务书 78 张主体加 J07 卡宾专用 H，共 79 张、11,880 字节。尺寸、anchor/mounts、tip/hand/beam 与各自参照件相同；78 张配件图均有轮廓差异，统一黄铜铆点，W 独立细化。615 项美术检查、87 组适配的 261 份布局、9 份子挂点组合、20 枪代表组合通过；1113 单测、139 工程检查、package、20 项既有改枪浏览器检查通过。源稿、提示词、首轮缺陷、预览与验证见[交付说明](docs/gunsmith/art/m4-premium/README.md)。仅暂存，正式 652 图与清单保留；实现方在本批后续 PR 导入、移除占位／ART_PENDING 后补游戏截图。准确 head 与 CI 见承接 PR，未合并、未部署，#155 保持开放。
+
+同日实现方另开接入 PR（`feat/gunsmith-premium-art`，叠在 #157 上；#157 按维护者分工只交素材）：79 张进正式目录（清单第 9 版，731 张、112,401 字节），本批清单移到 `docs/gunsmith/art/m4-premium/incoming-manifest.json`；拼装按零件编号找图，不用改代码，J07 在卡宾上自动用专用图；`items.ts` 的黄铜占位画法和目录门禁的 `ART_PENDING` 例外已删。游戏截图在 `docs/gunsmith/evidence/m4-premium`（两档桌面：仓库图标、M4A1 与 AK-74 工作台、行动持枪）。下一步：维护者看图签收后合并；M4-06 试玩和 M5 仍在 #80。
+
+## 2026-10-30 · 正对的门：暖光与地面通行带（#26 F07/F11）
+
+分支 `agent/door-passage-readability`，基线 main `8a4b46e4`。核对时发现竖向门只有程序画的窄木板、提示看不出指哪扇门、地面引导看不出穿到哪边。做了三个本地原型（所有门描边 / 只亮正对的门 / 正对的门加通行带），维护者选了第三个。`CoastView.showFacedDoor` 让提示指向的门发暖光（只照门自身像素、深度紧贴门，减少动态效果时不闪），`paintPassageGuide` 在地面层画门格加两侧各一格的通行带，关门带横杠。碰撞、揭示、存档不变。1082 单测、package、空间套件 24/24 通过，main 构建对照只有新 S03d 失败；建筑、普通行动、界面、渲染目标、资源释放、城中村样板和 139 项工程守卫也都通过。细节、截图与边界见[任务记录](docs/tasks/door-faced-cue.md)；未合并、未发布，真人/真机未验，竖向门正式美术仍缺（#32）。
+
+## 2026-10-30 M4 原厂弹匣美术（#142，PR #150）
+
+起点 M4 `0e9f8b3`，普通合入 main `8a4b46e`（SVD 接缝 #149 已正式接入）。独立本地美术工作树交付 `assets/gunsmith/incoming/m4-mags/`，十张 24×24 图标及两枪 H/I/W 六组机匣—弹匣分层，共 22 张、3,833 字节。164 项美术检查通过；六组原图重合差异 0 像素，真实拼装器 8 份原厂/8 份卸匣布局通过。尺寸、原挂点、tip 与 H 手位保留；仅新增 mag 点。源稿、预览、完整提示词与记录见[交付说明](docs/gunsmith/art/m4-mags/README.md)。本批仅暂存，正式图导入与功能接入由实现方续作；准确 head、仓库检查和 CI 见原 PR，未合并、未发布。
+
+## 2026-10-29 改枪 M4 第一步：拆下弹匣（#142，PR ④）
+
+分支 `feat/gunsmith-m4`，基线 main `d60e7c0`。维护者 10-29 定：枪按进度解锁卖（#139）、敌人拿什么枪就掉什么枪（#140）、拆弹匣先做（#142）。
+
+- 八把两行枪的原厂弹匣能在工作台拆下、装回；没装弹匣的枪一行、不能开火、不能出击；存档只多一个可选键 `magOut`，旧客户端拒读不覆盖（已实测）。细节见 CONTRACTS「拆下弹匣（M4-07）」。
+- 给 Sol 的画图说明：[art/m4-mags/BRIEF.md](docs/gunsmith/art/m4-mags/BRIEF.md)（十个原厂弹匣图标；SVD、Vector 的弹匣单独成层）。
+- M4-01 也已做完（维护者 10-29 细化：只看电台任务、稀有枪不卖、常规配件按出击轮换）：货架由存档已有的任务和出击次数算出，不加存档字段。细节见 CONTRACTS「老栓按进度供货（M4-01）」。
+- M4-02 也已做完（维护者 10-29：敌人数值不变、枪按阵营分档、地图变枪减少）：发枪在 `src/enemy-armory.ts`，尸体掉同一把枪，敌人手里画改枪持枪图。细节见 CONTRACTS「敌人拿什么枪就掉什么枪（M4-02）」；按枪算数值登记在 #152。
+- M4-03、M4-04 也已做完（维护者 10-30：配件维持现价，做完「未归的第七艘船」开稀有配件后期货架，任务太快登记 #153）：后期货架在 `D.lateParts`，二十局样本工具是 `scripts/economy-sample.ts`。细节见 CONTRACTS「价格与收入（M4-03）」「二十局资源样本（M4-04）」。
+- 10-30 Sol 的原厂弹匣图标和 SVD、Vector 分层（`87d0084`）已接入：清单第 8 版，十把枪能拆弹匣；内嵌字体加「期」「稀」两字重新生成。
+- M4-05 也已做完（维护者 10-30：八件白给的轻配件各加小代价）：对比工具 `scripts/build-compare.ts`，搜索与比较在 `scripts/build-search.ts`，守护测试 `tests/gunsmith-balance.test.ts`。细节见 CONTRACTS「配装对比与占优修正（M4-05）」。
+- M4-09 老栓精工（维护者 10-30 新增，#155）也已做完：20 件精品配件在 `catalog.ts`（J01–J20、`PREMIUM_BASES`），定制规则和面板数据在 `src/gunsmith/premium.ts`，件坯掉落在 `enemy-armory.ts` 的 `leaderBlank` 和 `building-world.ts`。美术等 Sol（`docs/gunsmith/art/m4-premium/BRIEF.md`），现在是占位图标，目录门禁对这 20 件开了例外。细节见 CONTRACTS「老栓精工（M4-09）」。
+- 维护者 10-30 定：没时间试玩，先合入 PR ④。M4-06 试玩以后做；M5 验收和老栓精工的美术合入后另开 PR 承接，登记在 #80（Sol 的图在 #157，接入在 `feat/gunsmith-premium-art`）。
+- 10-30 另修了商场遮罩测试 M03c 的偶发失败（#156，薄雾遮蔽值缓动到终点再钉住），已并入本分支。
+
+## 2026-10-29 SVD 接缝新图接入游戏（#80，PR #149）
+
+同一分支 `art/svd-joints` 续作：Sol 的三张图按 `replacesSha256` 换进正式目录，清单第 7 版（636 张、98,605 字节）；gunsmith-bench A1 只略过 Sol 记录的 70 个接缝像素；工作台、仓库、试枪场手持和武器卡的游戏内截图在 `docs/gunsmith/evidence/svd-joint/`。细节见 CONTRACTS「收尾小项」。
+
+## 2026-10-29 SVD 接缝美术（#80）
+
+分支 `art/svd-joints`，起点 main `d60e7c0`；原说明 PR #147 已合入。本次按 [BRIEF](docs/gunsmith/art/svd-joint/BRIEF.md) 交 I/W v3 及同类问题的 H v2，共 3 张、1,079 字节，位于 `assets/gunsmith/incoming/svd-joint/`。只改 70 个原墨色像素，画布、Alpha、色板、挂点、枪口、弹匣保留；40 项美术自查通过，正式 636 图及清单未改。前后对照、源稿、完整提示词和验证见[交付说明](docs/gunsmith/art/svd-joint/README.md)。实现方签收后按 `replacesSha256` 接入，再验游戏内截图；本次未接入、未合并、未发布。仓库检查及准确 head CI 见承接 PR。
 
 ## 2026-10-29 改枪收尾小项（#80，M4-08）
 

@@ -59,7 +59,7 @@ const failWrites = page => page.evaluate(() => { window.__set = Storage.prototyp
 const failSettlementWrites = page => page.evaluate(() => { window.__set = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (k === 'escape-bincov.session.v2' && !String(v).includes('"location":"raid"')) throw new DOMException('Injected fault', 'QuotaExceededError'); return window.__set.call(this, k, v); }; });
 const restoreWrites = page => page.evaluate(() => { Storage.prototype.setItem = window.__set; });
 
-const ROOM = { x: 304, y: 192, w: 320, h: 240 }, ROOM_ID = 'coast-buildings-v1/resident-layout-1/coast/region/resident-ground';
+const ROOM = { x: 304, y: 192, w: 320, h: 240 }, ROOM_ID = 'coast-story-v1/market-layout-1/coast/region/resident-ground';
 // Pixels of the view's composited render target (no HTML), re-presented from the same batch at a fixed view time while
 // the real pause holds simulation time (ambient light follows raid time). The first call stores the baseline. Roofs and
 // ceilings are stripped for every probe (a fully faded roof), so a pass depends on region gating, not on the roof
@@ -87,7 +87,7 @@ if (!group) { // Desktop flow: one run through every wiring point, ending in a s
   await step('W00 sample deploy mounts the Pixi host on the real Runtime', async () => {
     await deploy(page);
     const s = await page.evaluate(() => ({ state: window.__bincov.app.state, world: window.__bincovSample.host.lastBatch.stamp.world, roots: document.querySelectorAll('.coast-sample').length }));
-    assert.equal(s.state, 'run'); assert.equal(s.world.worldVersion, 'coast-buildings-v1'); assert.equal(s.roots, 1);
+    assert.equal(s.state, 'run'); assert.equal(s.world.worldVersion, 'coast-story-v1'); assert.equal(s.roots, 1);
     return s;
   });
   await step('W01 holding the left mouse button fires once (press edge)', async () => {

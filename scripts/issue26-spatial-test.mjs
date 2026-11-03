@@ -52,7 +52,7 @@ async function takeStairs(target) {
   throw new Error(`The stairs did not take the player to ${target}`);
 }
 async function check(name, task) {
-  if (touch && !name.startsWith('S03c ')) return;
+  if (touch && !/^S0(3c|7) /.test(name)) return; // the short-high touch screen runs the stair-label checks only
   const row = { name: `${size.join('x')} ${name}` }; report.checks.push(row);
   try { row.detail = await task(); assert.deepEqual(report.errors, []); row.status = 'passed'; }
   catch (e) { row.status = 'failed'; row.error = String(e.stack); process.exitCode = 1; }
@@ -313,6 +313,81 @@ try {
         await settle();
       }
     });
+    await check('S03d faced-door-glow-and-way-through', async () => {
+      // #26 F07: the door the E prompt is about glows (only where the door itself is drawn, at the door's depth) and the way
+      // through it is marked on the floor under the actors, barred while closed. Reads of the world target with the ticker
+      // stopped, toggling one sprite at a time, as in S03b.
+      const cue = () => page.evaluate(() => {
+        const h = window.__bincovSample.host, v = h.view, b = h.lastBatch, t = b.frame.interaction, c = v.facedDoor;
+        return { faced: t?.kind === 'door' ? t.ref.id : null, glow: !!c?.glow.visible, way: !!c?.way.visible,
+          wayAt: c && [c.way.x, c.way.y, c.way.texture.width, c.way.texture.height], wayUnder: c?.way.parent === v.flat,
+          glowDepth: c && c.glow.parent === v.sorted && c.glow.zIndex - v.doors.get(t?.ref.id)?.z };
+      });
+      const pixels = () => page.evaluate(() => {
+        const h = window.__bincovSample.host, v = h.view, c = v.facedDoor, door = v.doors.get(h.lastBatch.frame.interaction.ref.id).sprite;
+        h.app.ticker.stop();
+        try {
+          v.time = 0; const shown = [c.glow.visible, c.way.visible, door.visible];
+          const read = (glow, way, d) => { c.glow.visible = glow; c.way.visible = way; door.visible = d; v.render(); return h.app.renderer.extract.pixels({ target: v.worldRT }).pixels.slice(); };
+          const all = read(true, true, true), noGlow = read(false, true, true), noWay = read(true, false, true), bare = read(false, false, true), noDoor = read(false, false, false);
+          [c.glow.visible, c.way.visible, door.visible] = shown;
+          const differs = (x, y, i) => x[i] !== y[i] || x[i + 1] !== y[i + 1] || x[i + 2] !== y[i + 2];
+          let glow = 0, glowOffDoor = 0, way = 0;
+          for (let i = 0; i < all.length; i += 4) {
+            if (differs(all, noGlow, i)) { glow++; if (!differs(bare, noDoor, i)) glowOffDoor++; }
+            if (differs(all, noWay, i)) way++;
+          }
+          return { glow, glowOffDoor, way };
+        } finally { v.render(); h.app.render(); h.app.ticker.start(); }
+      });
+      await page.evaluate(() => { const d = window.__bincovSample.driver; for (const id of ['resident-front', 'resident-west', 'resident-east']) d.door(id, false); });
+      await page.evaluate(() => window.__bincovSample.driver.placePlayer({ x: 464, y: 336 }, Math.PI, 'coast')); await settle();
+      const closed = { ...await cue(), pixels: await pixels() };
+      assert.equal(closed.faced, 'resident-west', 'the prompt is about the west door');
+      assert.ok(closed.glow && closed.way, 'the faced closed door glows and shows its way through');
+      assert.deepEqual(closed.wayAt, [12 * 32, 10 * 32, 96, 32], 'the way runs east-west across the north-south wall, one cell either side');
+      assert.ok(closed.wayUnder, 'the way lies on the floor layer, under walls and actors');
+      assert.ok(closed.glowDepth > 0 && closed.glowDepth < .1, 'the glow is drawn right above the door, so actors in front stay on top');
+      assert.ok(closed.pixels.glow > 100 && closed.pixels.way > 100, `positive controls: glow ${closed.pixels.glow} px, way ${closed.pixels.way} px`);
+      assert.equal(closed.pixels.glowOffDoor, 0, 'the glow lights only pixels where the door itself is drawn');
+      const before = await page.evaluate(() => window.__bincovSample.host.view.facedDoor.way.texture);
+      await page.keyboard.press('e'); await page.waitForFunction(() => window.__bincovSample.host.lastBatch.frame.doors['resident-west']); await settle();
+      const open = await cue();
+      assert.ok(open.faced === 'resident-west' && open.glow && open.way, 'still marked once open');
+      assert.ok(await page.evaluate(t => window.__bincovSample.host.view.facedDoor.way.texture !== t, before), 'the open way is drawn without the bar');
+      // An enemy in the open doorway stands on the way: none of its pixels may be covered by it (the S03b reads).
+      const staged = await page.evaluate(() => {
+        const h = window.__bincovSample.host, a = h.lastBatch.frame.actors.find(a => a.kind !== 'player' && a.alive && Math.hypot(a.x - 432, a.y - 336) > 120);
+        if (!a) throw new Error('no live enemy away from the doorway');
+        window.__bincovSample.driver.placeEnemy(a.uid, { x: 432, y: 340 }); return { uid: a.uid, home: { x: a.x, y: a.y } };
+      });
+      try {
+        await settle();
+        const enemy = await page.evaluate(uid => {
+          const h = window.__bincovSample.host, v = h.view, c = v.facedDoor, parts = window.__figure(v.actors.get(uid));
+          h.app.ticker.stop();
+          try {
+            v.time = 0; const shown = parts.map(s => s.visible), way = c.way.visible, glow = c.glow.visible, shots = {};
+            const read = () => { v.render(); return h.app.renderer.extract.pixels({ target: v.worldRT }).pixels.slice(); };
+            for (const [name, entity, marked] of [['A', true, true], ['B', false, true], ['C', true, false], ['D', false, false]]) {
+              parts.forEach((s, i) => { s.visible = entity && shown[i]; }); c.way.visible = c.glow.visible = marked; shots[name] = read();
+            }
+            parts.forEach((s, i) => { s.visible = shown[i]; }); c.way.visible = way; c.glow.visible = glow;
+            return { faced: h.lastBatch.frame.interaction?.ref.id, enemyShown: shown[0], ...window.__occlusion(shots) };
+          } finally { v.render(); h.app.render(); h.app.ticker.start(); }
+        }, staged.uid);
+        assert.ok(enemy.enemyShown && enemy.body > 100, `positive control: the enemy is drawn (${enemy.body} px)`);
+        assert.ok(enemy.overlap > 20, `positive control: the enemy stands on the marks (${enemy.overlap} px)`);
+        assert.equal(enemy.covered, 0, 'no enemy pixel is covered by the glow or the way');
+        await place(208, 1232); await settle();
+        const away = await cue();
+        assert.ok(away.faced !== 'resident-west' && !away.glow && !away.way, 'the marks go once no door is faced');
+        return { closed, open, enemy, away };
+      } finally {
+        await page.evaluate(({ uid, home }) => { const d = window.__bincovSample.driver; d.placeEnemy(uid, home); d.door('resident-west', false); }, staged);
+        await settle();
+      }
+    });
     await check('S04 real-stairs-and-whole-current-floor', async () => {
       await place(560, 272); await settle(); await takeStairs('resident-f2'); await settle();
       const upstairs = await guides();
@@ -483,6 +558,67 @@ try {
       assert.ok(roof && roof.level === 0 && roof.visible); assert.ok(Object.values(result.revealed).every(v => !v));
       assert.deepEqual(result.doors.filter(d => d.visible).map(d => d.id), ['resident-front']);
       assert.ok(result.labels.every(e => !e.visible)); return { roof, doors: result.doors };
+    });
+    await check('S07 stair-label-stays-beside-its-own-stairs', async () => {
+      // #26 F07/F11, seen 2026-10-30 while doing #154: next to the stairs the label was moved to the player's feet, away from
+      // its stairs and onto another door's mark and the faced door's way. Each spot below is real Runtime placement; the
+      // shown HUD text is measured on screen (client px) against the drawn stairs, the player, the faced door's cue (lit
+      // glow pixels and the way), shown door marks, other stairs, the prompt and the other labels.
+      const spots = [['coast', 560, 336, Math.PI], ['coast', 560, 308, Math.PI], ['coast', 464, 336, Math.PI], ['coast', 496, 336, 0],
+        ['resident-f2', 272, 144, 0], ['resident-f2', 304, 144, -Math.PI / 2], ['resident-b1', 272, 176, 0]];
+      const rows = [];
+      try {
+        for (const [map, x, y, a] of spots) {
+          // Doors closed, as observed; the floor's own doors are known once its first frame is published.
+          await page.evaluate(([x, y, a, map]) => window.__bincovSample.driver.placePlayer({ x, y }, a, map), [x, y, a, map]); await settle();
+          await page.evaluate(() => { const d = window.__bincovSample.driver; for (const door of window.__bincovSample.host.lastBatch.map.doors) d.door(door.id, false); });
+          await settle(); await frames(4);
+          rows.push(await page.evaluate(() => {
+            const h = window.__bincovSample.host, v = h.view, b = h.lastBatch, f = b.frame, p = f.player, s = v.view.s;
+            const box = r => { const a = v.worldToClient({ x: r.x, y: r.y }), c = v.worldToClient({ x: r.x + r.w, y: r.y + r.h }); return { x: a.x, y: a.y, w: c.x - a.x, h: c.y - a.y }; };
+            const dom = el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+            const hit = (a, c) => a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h;
+            // How far one box reaches into another (client px, the shallower axis); 0 when they only touch or are apart.
+            const depth = (a, c) => Math.max(0, Math.min(Math.min(a.x + a.w, c.x + c.w) - Math.max(a.x, c.x), Math.min(a.y + a.h, c.y + c.h) - Math.max(a.y, c.y)));
+            const gap = (a, c) => Math.max(0, c.x - a.x - a.w, a.x - c.x - c.w, c.y - a.y - a.h, a.y - c.y - c.h) / s;
+            const art = e => ({ x: Math.floor(e.at.x / 32) * 32, y: Math.floor(e.at.y / 32) * 32 - 8, w: 32, h: 40 });
+            // The glow's lit pixels, read from its picture (the frame of the shared texture page).
+            const lit = sprite => { const t = sprite.texture, fr = t.frame, d = t.source.resource.getContext('2d').getImageData(fr.x, fr.y, fr.width, fr.height).data;
+              let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+              for (let y = 0; y < fr.height; y++) for (let x = 0; x < fr.width; x++) if (d[(y * fr.width + x) * 4 + 3]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+              return x1 < 0 ? null : { x: sprite.x + x0, y: sprite.y + y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }; };
+            const c = v.facedDoor, cue = {};
+            if (c?.way.visible) cue.way = box({ x: c.way.x, y: c.way.y, w: c.way.texture.width, h: c.way.texture.height });
+            if (c?.glow.visible) { const g = lit(c.glow); if (g) cue.glow = box(g); }
+            const marks = b.map.doors.flatMap(d => { const g = v.doorGuides.get(d.id); return g?.visible ? [{ id: d.id, r: box({ x: g.x + 2, y: g.y + 50, w: 28, h: 28 }) }] : []; });
+            const prompt = document.querySelector('.coast-sample [data-prompt]'), promptBox = prompt && !prompt.hidden ? dom(prompt) : null;
+            const body = box({ x: p.x - 14, y: p.y - 44, w: 28, h: 48 });
+            const labels = b.map.entries.filter(e => v.stairLabels.get(e.id)?.visible).map(e => {
+              const el = h.stairEls.get(e.id); return { id: e.id, shown: !!el && !el.hidden, r: el ? dom(el) : null, art: box(art(e)), home: box({ x: e.at.x - 30, y: e.at.y + 22, w: 60, h: 18 }) };
+            });
+            return { map: b.map.key.mapId, player: { x: p.x, y: p.y }, faced: f.interaction?.kind === 'door' ? f.interaction.ref.id : f.interaction?.kind ?? null,
+              prompt: promptBox, labels: labels.map(l => ({ id: l.id, shown: l.shown, box: l.r, gap: l.r && +gap(l.r, l.art).toFixed(1), homeOnPlayer: hit(l.home, body),
+                covers: l.r && Object.fromEntries([['player', body], ['way', cue.way], ['glow', cue.glow], ['prompt', promptBox], ...marks.map(m => [`mark ${m.id}`, m.r]),
+                  ...labels.filter(o => o !== l).flatMap(o => [[`stairs ${o.id}`, o.art], [`label ${o.id}`, o.r]])]
+                  .filter(([, r]) => r && depth(l.r, r) > 0).map(([k, r]) => [k, +depth(l.r, r).toFixed(1)])) })) };
+          }));
+        }
+      } finally { await place(464, 448); await settle(); }
+      (report.stairLabels ??= []).push({ size: size.join('x'), rows }); // kept on failure too
+      const at = rows.find(r => r.map === 'coast' && r.player.x === 560 && r.player.y === 336);
+      assert.equal(at.faced, 'resident-east', 'the observed spot faces the east door');
+      assert.ok(at.labels.find(l => l.id === 'resident-up').homeOnPlayer, 'positive control: the resting place there would cover the player');
+      assert.ok(rows.every(r => r.labels.length), 'every spot shows a stair label');
+      for (const r of rows) for (const l of r.labels) {
+        const where = `${r.map} (${r.player.x}, ${r.player.y}) ${l.id}`;
+        assert.ok(l.shown, `${where}: the destination is shown`);
+        assert.ok(l.gap <= 8, `${where}: the label stays beside its stairs (${l.gap} px away)`);
+        // Never the player or the faced door's cue. The prompt, door marks, other stairs and labels only where no side is
+        // free of them: on the short touch screen the 72 px text can rest 1 px into the prompt's edge (reported, allowed).
+        const covers = Object.entries(l.covers).filter(([k, d]) => ['player', 'way', 'glow'].includes(k) || d > 2);
+        assert.deepEqual(covers, [], `${where}: the label covers nothing (${JSON.stringify(l.covers)})`);
+      }
+      return rows;
     });
     await context.close(); context = null;
   }

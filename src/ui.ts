@@ -11,7 +11,8 @@ import type { SessionMutation } from './session';
 import { titleScreen } from './title-screen';
 import { moveQuantity, placementError } from './loot';
 import { transferBagToStash, organizeStash } from './inventory-actions';
-import { ATTRIBUTES, EFFECTS, FACILITIES, RECIPES, derivedLimits, effectiveAttributes, rpgEnabled, type Facility } from './expansion-state';
+import { ATTRIBUTES, EFFECTS, FACILITIES, RECIPES, derivedLimits, effectiveAttributes, rpgEnabled, type ExpansionState, type Facility } from './expansion-state';
+import { craftPremium, premiumOrders, PREMIUM_LOCKED_NOTE, PREMIUM_OPEN_NOTE } from './gunsmith/premium';
 import { FACILITY_COSTS, FACILITY_NAMES, buildFacility, enqueueProduction, claimProduction, cancelProduction } from './base';
 import { equipCharm, unequipCharm, reputationTier } from './reputation-luck';
 import { mallRunConfig } from './mall-world';
@@ -25,7 +26,7 @@ import { artId, itemArtwork, painted } from './art/item-images';
 import { paintPortrait } from './art/portraits';
 import { sampleSupports, startCoastSample } from './coast-view/sample';
 import { enterStation, returnToStation, stationDefault } from './station-view/route';
-import { raidWorlds, sampleMallLayout, sampleMode, villageSeed } from './raid-areas';
+import { marketStory, raidWorlds, sampleMallLayout, sampleMode, villageSeed } from './raid-areas';
 import { provideNavigation } from './navigation';
 import { exportSave } from './save-export';
 import { toast } from './toast';
@@ -35,7 +36,7 @@ import { esc } from './html';
 import { SUPPLY_IDS } from './rpg';
 import { Workbench } from './gunsmith-view/bench';
 // The raid view and the station yard switch screens through this port rather than importing the page.
-provideNavigation({ changeState, enterExternalRun, render, hideoutExternal, startPreparedHideoutRaid });
+provideNavigation({ changeState, enterExternalRun, settled, render, hideoutExternal, startPreparedHideoutRaid });
 let phoneLayout = false;
 /** Phone layout, set by main.ts from the device and screen size: a presentation choice, not an input mode. */
 export function setPhoneLayout(on: boolean) { phoneLayout = on; }
@@ -95,6 +96,20 @@ function enterHideout() {
 const walkInLabel = () => '回到院子';
 /** Enter the run state for the raid host (coast-view/sample.ts), which draws and owns the whole raid. */
 export function enterExternalRun() { app.state = 'run'; app.overlay = ''; clearSelection(); showScreen('none', app.menuMotion); render(); }
+/**
+ * After a saved settlement (#163: one report per raid). The yard walks in through the gate and shows its report; the
+ * result page is the fallback: the tab-page entry, or a return the Runtime refused (its 「返回水产站」 tries again and
+ * then walks in without the report). A yard that fails to start has already put up the tab page; the report then opens
+ * there as a dialog.
+ */
+export function settled() {
+    if (!stationDefault()) { changeState('result'); return; }
+    void returnToStation().then(ok => {
+        if (ok) return;
+        if (app.state === 'result') changeState('result');
+        else if (app.state === 'hideout' && !app.station && app.result) setOverlay('report');
+    });
+}
 /** Switch the page's own screens (title, tab page, result); a raid always goes through enterExternalRun. */
 export function changeState(state: Exclude<typeof app.state, 'run'>) {
     if (state === 'hideout' && !app.pendingSettlement && !saved(saveSession.ensureRpg())) return;
@@ -106,6 +121,8 @@ export function changeState(state: Exclude<typeof app.state, 'run'>) {
 const btn = (label: string, action: string, cls = '', extra = '') => `<button class="${cls}" data-action="${action}" ${extra}>${label}</button>`;
 function preparedWeight(){const s=app.save,w=D.equippedWeapon(s.equipment);return D.weight(s.bag)+D.weight(s.safe)+D.ITEMS.knife.weight+D.equippedWeight(s.equipment)+(w.ammo?D.ITEMS[w.ammo].weight*s.equipment.ammo:0)+(app.expansion?.charm ? D.ITEMS[app.expansion.charm.id].weight : 0);}
 function inventoryCell() { return !touchLayout() && innerWidth >= 1700 && innerHeight >= 900 ? 80 : 54; }
+/** The shop's four grids (22 columns side by side) at the largest cell the page width allows, never below 54 px. */
+function shopCell() { return touchLayout() ? 54 : Math.max(54, Math.min(80, Math.floor((Math.min(innerWidth, 1920) - 300) / 22), Math.floor((innerHeight - 330) / 8))); }
 function itemIcon(id: string, small = false) {
     const size = small ? 24 : 32, art = artId(id), url = art ? painted(`item-${small ? 'small-' : ''}${art}`, size, size, c => paintItem(c, art, size)) : '';
     return url ? `<img class="item-icon${small ? ' compact-icon' : ''}" width="${small ? 24 : 32}" height="${small ? 24 : 32}" alt="" draggable="false" src="${url}">` : '';
@@ -120,14 +137,14 @@ let shopBrowse: Shop.ShopBrowse = Shop.BROWSE_ALL;
 function cart() {
     if (!app.shop || app.shop.merchant !== app.tab) {
         // A kind the other merchant does not stock falls back to all.
-        if (shopBrowse.kind !== 'all' && !Shop.stockKinds(app.tab as Shop.Merchant, rpgEnabled(app.expansion)).includes(shopBrowse.kind)) shopBrowse = Shop.BROWSE_ALL;
+        if (shopBrowse.kind !== 'all' && !Shop.stockKinds(app.tab as Shop.Merchant, app.save, rpgEnabled(app.expansion)).includes(shopBrowse.kind)) shopBrowse = Shop.BROWSE_ALL;
         app.shop = Shop.createCart(app.save, app.tab as Shop.Merchant, rpgEnabled(app.expansion), shopBrowse);
     }
     return app.shop;
 }
 /** The filter buttons above the catalog: all or one kind, only what fits the base's guns, the pages. */
 function shopBrowseBar(): string {
-    const merchant = app.tab as Shop.Merchant, rpg = rpgEnabled(app.expansion), kinds = Shop.stockKinds(merchant, rpg);
+    const merchant = app.tab as Shop.Merchant, rpg = rpgEnabled(app.expansion), kinds = Shop.stockKinds(merchant, app.save, rpg);
     const page = Shop.catalogPage(app.save, merchant, rpg, shopBrowse);
     if (kinds.length < 2 && page.pages < 2) return '';
     const chip = (id: string, label: string, on: boolean) => btn(label, 'shop-browse', on ? 'active' : '', `data-id="${id}" aria-pressed="${on}"`);
@@ -159,7 +176,7 @@ function occupied(inv: D.Inventory) {
 function equipmentPanel(equipment: D.Equipment, bag: D.Inventory, safe: D.Inventory) {
     const weapon = D.equippedWeapon(equipment);
     const ammo = equipment.ammo;
-    return `<section class="safe-section equipment-section"><h3 class="section-title"><b class="section-number">01</b>随身装备 <span>携行</span></h3><div class="equip"><div class="equipment-caption"><span>${equipment.weapon ? '主武器' : '随身匕首'}</span>${equipment.relief ? '<span class="orange">救济</span>' : ''}</div><div class="equipped-icon">${itemArtwork({ id: weapon.id, gun: equipment.gun }, inventoryCell() === 80 ? 312 : 204, inventoryCell() === 80 ? 102 : 52)}</div><div class="equipment-name"><strong>${weapon.name}</strong>${equipment.weapon ? `<span id="equipped-ammo">${ammo} / ${weapon.magazine}</span>` : '<span>始终保留</span>'}</div>${equipment.weapon ? btn('卸下主武器', 'unequip', 'text-button') : ''}${equipment.weapon && equipment.weaponUid && app.state === 'hideout' ? btn('改装', 'gunsmith-open', 'text-button', `data-id="${equipment.weaponUid}"`) : ''}</div>${weapon.ammo ? `<p class="reserve-ammo">背包备用弹药 <span>${D.ITEMS[weapon.ammo].name} · ${D.count(bag, weapon.ammo)} 发</span></p>` : '<p class="reserve-ammo">装备枪械后，备用弹药放在背包。</p>'}<h3 class="section-title secure-heading">安全箱 <span>失败也保留</span></h3><div class="secure-kit">${grid(safe, 'safe')}<div class="knife-card">${itemIcon('knife')}<strong>水手匕首</strong><span>随身携带<br>始终保留</span></div></div></section>`;
+    return `<section class="safe-section equipment-section"><h3 class="section-title"><b class="section-number">01</b>随身装备 <span>携行</span></h3><div class="equip"><div class="equipment-caption"><span>${equipment.weapon ? '主武器' : '随身匕首'}</span>${equipment.relief ? '<span class="orange">救济</span>' : ''}</div><div class="equipped-icon">${itemArtwork({ id: weapon.id, gun: equipment.gun }, inventoryCell() === 80 ? 312 : 204, inventoryCell() === 80 ? 102 : 52)}</div><div class="equipment-name"><strong>${weapon.name}</strong>${equipment.weapon ? `<span id="equipped-ammo">${weapon.magazine ? `${ammo} / ${weapon.magazine}` : '没装弹匣'}</span>` : '<span>始终保留</span>'}</div>${equipment.weapon ? btn('卸下主武器', 'unequip', 'text-button') : ''}${equipment.weapon && equipment.weaponUid && app.state === 'hideout' ? btn('改装', 'gunsmith-open', 'text-button', `data-id="${equipment.weaponUid}"`) : ''}</div>${weapon.ammo ? `<p class="reserve-ammo">背包备用弹药 <span>${D.ITEMS[weapon.ammo].name} · ${D.count(bag, weapon.ammo)} 发</span></p>` : '<p class="reserve-ammo">装备枪械后，备用弹药放在背包。</p>'}<h3 class="section-title secure-heading">安全箱 <span>失败也保留</span></h3><div class="secure-kit">${grid(safe, 'safe')}<div class="knife-card">${itemIcon('knife')}<strong>水手匕首</strong><span>随身携带<br>始终保留</span></div></div></section>`;
 }
 function bagPanel(bag: D.Inventory, weight: number) {
     const limit = carryLimit();
@@ -212,9 +229,10 @@ export async function startPreparedHideoutRaid(runId: string): Promise<boolean> 
 }
 const WORLD_OPTION: Record<'coast' | 'buildings' | 'mall', string> = { coast: '沿海封锁区 · 经典规则', buildings: '沿海街区 · 居民楼', mall: '滨湾商场 · 两层与露台' };
 function deploy() {
-    if (D.stashOverflow(app.save.stash).length) { toast(D.OVERFLOW_BLOCKS_DEPLOY); return; }
+    const stop = D.deployBlocker(app.save);
+    if (stop) { toast(stop); return; }
     const cfg = app.runWorld === 'mall' ? mallRunConfig(app.seed || Date.now()) : generateRun(app.seed || (sampleMode() === 'village' && app.runWorld === 'buildings' ? villageSeed() : Date.now()));
-    if (!saved(saveSession.beginRun(cfg.seed, app.runWorld === 'mall' ? 'mall' : app.runWorld === 'buildings', { mallLayout: sampleMallLayout(app.runWorld) }))) return;
+    if (!saved(saveSession.beginRun(cfg.seed, app.runWorld === 'mall' ? 'mall' : app.runWorld === 'buildings', { mallLayout: sampleMallLayout(app.runWorld), marketStory: marketStory(app.runWorld) }))) return;
     app.shop = null; void startCoastSample();
 }
 function checkout() {
@@ -262,10 +280,14 @@ export function render() {
     // The raid host draws its own HUD and panels; nothing of the old page shows during a raid.
     if (app.state === 'run') { ui().innerHTML = ''; return; }
     if (app.state === 'result') {
-        const r = app.result;
-        ui().innerHTML = `<div class="overlay"><div class="panel result"><div class="stamp">行动报告 <span>${r?.outcome === 'extract' ? '成功撤离' : '撤离失败'}</span></div><h2>${r?.outcome === 'extract' ? '你回来了。' : r?.outcome === 'timeout' ? '撤离时间已过。' : '未能撤离。'}</h2><p>${r?.outcome === 'extract' ? '装备和物资已带回水产站，进度已保存。' : '背包内的物资和主武器已丢失，安全箱内的物品和水手匕首保留。'}</p><div class="stats"><div><strong>${r?.kills || 0}</strong><span>击败敌人</span></div><div><strong>¥ ${r?.keptValue || 0}</strong><span>保留物资估值</span></div><div><strong>${app.save.stats.extracts} / ${app.save.stats.runs}</strong><span>累计撤离 / 出击</span></div></div>${btn('返回水产站　 →', 'return', 'primary')}</div></div>`;
+        ui().innerHTML = `<div class="overlay">${resultCard(btn('返回水产站　 →', 'return', 'primary'))}</div>`;
         bind();
     }
+}
+/** The old page's report card: the result screen's, and the tab page's dialog when the yard could not open after a raid. */
+function resultCard(action: string, attrs = '') {
+    const r = app.result;
+    return `<div class="panel result" ${attrs}><div class="stamp">行动报告 <span>${r?.outcome === 'extract' ? '成功撤离' : '撤离失败'}</span></div><h2>${r?.outcome === 'extract' ? '你回来了。' : r?.outcome === 'timeout' ? '撤离时间已过。' : '未能撤离。'}</h2><p>${r?.outcome === 'extract' ? '装备和物资已带回水产站，进度已保存。' : '背包内的物资和主武器已丢失，安全箱内的物品和水手匕首保留。'}</p><div class="stats"><div><strong>${r?.kills || 0}</strong><span>击败敌人</span></div><div><strong>¥ ${r?.keptValue || 0}</strong><span>保留物资估值</span></div><div><strong>${app.save.stats.extracts} / ${app.save.stats.runs}</strong><span>累计撤离 / 出击</span></div></div>${action}</div>`;
 }
 function shopCheckout() {
     if (app.placement) return `<div class="shop-placement">${placementControls()}</div>`;
@@ -360,7 +382,13 @@ function facilityPanel() {
     const facility = FACILITIES.includes(app.baseFacility as Facility) ? app.baseFacility as Facility : 'rest', level = state.base.facilities[facility], cost = FACILITY_COSTS[facility][level];
     const explanation = { rest: '提高生命与精神恢复速度，并缩短获得精力充沛所需的休息。', medical: '提高生命恢复和止血、镇痛、疲劳治疗速度。', training: '提高行动训练效率。在训练区实际走动，每满 120 秒获得一次练习收益。', workbench: '有限队列串行生产；领完一批，再为后续成品腾出位置。', blackmarket: '需要修好电源，并成功带回一颗普通黑珍珠。货单尚未开放。' };
     const locked = facility !== 'rest' && !app.save.quests.repair || facility === 'blackmarket' && !state.base.extractedPearl;
-    return `<section class="facility-panel"><nav class="facility-tabs">${FACILITIES.map(id => btn(FACILITY_NAMES[id], 'facility-select', facility === id ? 'active' : '', `data-id="${id}"`)).join('')}</nav><h3>${FACILITY_NAMES[facility]} · ${level ? `${level} 级` : '未修建'}</h3><p>${explanation[facility]}</p>${cost ? `<p>费用 ¥${cost.cash} · ${cost.items.map(i => `${D.ITEMS[i.id].name} × ${i.qty}`).join('、')}（仅普通物资）</p>${locked ? '<p class="orange">先完成供电任务；黑市还需要成功带回黑珍珠。</p>' : ''}${btn(level ? '升级设施' : '修建设施', 'facility-build', 'primary', locked ? 'disabled' : '')}` : '<p>已达到最高等级。</p>'}${facility === 'training' ? `<h4>主动练习</h4><p>十分钟内共享 1 点训练量上限；更换项目保留同一额度。</p>${ATTRIBUTES.map(id => btn(attributeNames[id], 'practice-select', state.base.training.attribute === id ? 'active' : '', `data-id="${id}"`)).join('')}` : ''}${facility === 'workbench' ? `<h4>配方</h4>${Object.entries(RECIPES).map(([id,r]) => `<div class="production-row"><span>${r.result.map(i => `${D.ITEMS[i.id].name} × ${i.qty}`).join('、')} · ${r.seconds / 60}分钟<br>¥${r.cash} + ${r.materials.map(i => `${D.ITEMS[i.id].name} × ${i.qty}`).join('、')} · 工作台 ${r.level}级${r.medical ? ' / 医疗区1级' : ''}</span>${btn('排入生产', 'production-enqueue', '', `data-id="${id}"`)}</div>`).join('')}<h4>生产队列 ${state.base.queue.length} / ${state.base.facilities.workbench}</h4>${state.base.queue.map((b,i) => `<div class="production-row"><span>${D.ITEMS[b.recipe].name} · ${i === 0 ? b.remaining === 0 ? '等待成品位' : `剩余 ${Math.ceil(b.remaining)}秒` : '等待生产'}</span>${i ? btn('取消并退款', 'production-cancel', '', `data-id="${b.id}"`) : ''}</div>`).join('')}<h4>待领取 ${state.base.completed.length} / 3</h4>${state.base.completed.map(b => `<div class="production-row"><span>${b.result.map(i => `${D.ITEMS[i.id].name} × ${i.qty}`).join('、')}</span>${btn('整批领入仓库', 'production-claim', '', `data-id="${b.id}"`)}</div>`).join('')}` : ''}</section>`;
+    return `<section class="facility-panel"><nav class="facility-tabs">${FACILITIES.map(id => btn(FACILITY_NAMES[id], 'facility-select', facility === id ? 'active' : '', `data-id="${id}"`)).join('')}</nav><h3>${FACILITY_NAMES[facility]} · ${level ? `${level} 级` : '未修建'}</h3><p>${explanation[facility]}</p>${cost ? `<p>费用 ¥${cost.cash} · ${cost.items.map(i => `${D.ITEMS[i.id].name} × ${i.qty}`).join('、')}（仅普通物资）</p>${locked ? '<p class="orange">先完成供电任务；黑市还需要成功带回黑珍珠。</p>' : ''}${btn(level ? '升级设施' : '修建设施', 'facility-build', 'primary', locked ? 'disabled' : '')}` : '<p>已达到最高等级。</p>'}${facility === 'training' ? `<h4>主动练习</h4><p>十分钟内共享 1 点训练量上限；更换项目保留同一额度。</p>${ATTRIBUTES.map(id => btn(attributeNames[id], 'practice-select', state.base.training.attribute === id ? 'active' : '', `data-id="${id}"`)).join('')}` : ''}${facility === 'workbench' ? `<h4>配方</h4>${Object.entries(RECIPES).map(([id,r]) => `<div class="production-row"><span>${r.result.map(i => `${D.ITEMS[i.id].name} × ${i.qty}`).join('、')} · ${r.seconds / 60}分钟<br>¥${r.cash} + ${r.materials.map(i => `${D.ITEMS[i.id].name} × ${i.qty}`).join('、')} · 工作台 ${r.level}级${r.medical ? ' / 医疗区1级' : ''}</span>${btn('排入生产', 'production-enqueue', '', `data-id="${id}"`)}</div>`).join('')}<h4>生产队列 ${state.base.queue.length} / ${state.base.facilities.workbench}</h4>${state.base.queue.map((b,i) => `<div class="production-row"><span>${D.ITEMS[b.recipe].name} · ${i === 0 ? b.remaining === 0 ? '等待成品位' : `剩余 ${Math.ceil(b.remaining)}秒` : '等待生产'}</span>${i ? btn('取消并退款', 'production-cancel', '', `data-id="${b.id}"`) : ''}</div>`).join('')}<h4>待领取 ${state.base.completed.length} / 3</h4>${state.base.completed.map(b => `<div class="production-row"><span>${b.result.map(i => `${D.ITEMS[i.id].name} × ${i.qty}`).join('、')}</span>${btn('整批领入仓库', 'production-claim', '', `data-id="${b.id}"`)}</div>`).join('')}${premiumPanel(state)}` : ''}</section>`;
+}
+/** 老栓精工 (#28 M4-09) under the workbench, as the yard shows it (station-view/panels.ts premiumHtml). */
+function premiumPanel(state: ExpansionState) {
+    const o = premiumOrders(app.save, state);
+    const rows = o.rows.map(r => `<div class="production-row"><span>${esc(r.name)} · ${esc(r.guns)}<br>底料 ${esc(r.base ?? r.bases)} · ¥${r.price}${r.why ? ` · <b class="orange">${esc(r.why)}</b>` : ''}</span>${btn('定制', 'premium-craft', '', `data-id="${r.id}"${r.why ? ' disabled' : ''}`)}</div>`).join('');
+    return `<h4>老栓精工定制 · 精工件坯 ${o.blanks} 份</h4>${o.lock ? `<p>${esc(o.lock)}${esc(PREMIUM_LOCKED_NOTE)}</p>` : `<p>${esc(PREMIUM_OPEN_NOTE)}</p>${rows}`}`;
 }
 function renderHideout() {
     const scrollPositions = new Map<string, number>();
@@ -379,13 +407,13 @@ function renderHideout() {
     } else if (app.tab === 'facilities') { body = facilityPanel();
     } else if (app.tab === 'arms' || app.tab === 'med') {
         const c = cart(), merchant = D.MERCHANTS[c.merchant], totals = Shop.cartTotals(c);
-        body = `<div class="merchant-heading">${merchantPortrait(app.tab)}<div><h3>${merchant.name}<span>${merchant.subtitle}</span></h3><p>先选物品，再一起结算。放回原侧可取消。</p></div></div><div class="shop-layout" data-merchant="${app.tab}"><section><h3>商人物品 · 按包购买</h3>${shopBrowseBar()}${grid(c.catalog, 'merchant', 54)}</section><section class="shop-buffer"><div><h3>待买 · ¥ ${totals.buy}</h3>${grid(c.buy, 'buy', 54)}</div><div><h3>待卖 · ¥ ${totals.sell}</h3>${grid(c.sell, 'sell', 54)}</div></section><section><h3>仓库 · 整组出售</h3>${grid(c.stash, 'stash', 54)}</section></div>${details()}`;
+        body = `<div class="merchant-heading">${merchantPortrait(app.tab)}<div><h3>${merchant.name}<span>${merchant.subtitle}</span></h3><p>先选物品，再一起结算。放回原侧可取消。</p></div></div><div class="shop-layout" data-merchant="${app.tab}"><section><h3>商人物品 · 按包购买</h3>${shopBrowseBar()}${grid(c.catalog, 'merchant', shopCell())}</section><section class="shop-buffer"><div><h3>待买 · ¥ ${totals.buy}</h3>${grid(c.buy, 'buy', shopCell())}</div><div><h3>待卖 · ¥ ${totals.sell}</h3>${grid(c.sell, 'sell', shopCell())}</div></section><section><h3>仓库 · 整组出售</h3>${grid(c.stash, 'stash', shopCell())}</section></div>${details()}`;
     } else if (app.tab === 'quests') {
         body = `<div class="quests">${Object.entries(D.QUESTS).map(([id, q], i) => {
             const complete = s.quests[id];
             const needs = Object.entries(q.needs).map(([itemId, needed]) => ({ itemId, needed, have: [s.stash, s.bag, s.safe].reduce((sum, inv) => sum + D.count(inv, itemId), 0) }));
             const ready = needs.every(({ have, needed }) => have >= needed);
-            return `<article class="quest ${complete ? 'complete' : ''}"><div class="quest-status"><span class="mono">0${i + 1}</span><span>${complete ? '已交付' : ready ? '可以交付' : '等待物资'}</span></div><h3>${q.name}</h3><p>${q.description}</p>${complete ? `<p class="quest-reply">${q.radio}</p>` : `<ul class="quest-needs">${needs.map(({ itemId, needed, have }) => {
+            return `<article class="quest ${complete ? 'complete' : ''}"><div class="quest-status"><span class="mono">0${i + 1}</span><span>${complete ? '已交付' : ready ? '可以交付' : '等待物资'}</span></div><h3>${q.name}</h3><p>${q.description}</p>${D.questShelfText(id, complete) ? `<p class="quest-unlock">${D.questShelfText(id, complete)}</p>` : ''}${complete ? `<p class="quest-reply">${q.radio}</p>` : `<ul class="quest-needs">${needs.map(({ itemId, needed, have }) => {
                 return `<li class="${have >= needed ? 'ready' : ''}"><span>${D.ITEMS[itemId].name}</span><strong>${Math.min(have, needed)} <span>/ ${needed}</span></strong></li>`;
             }).join('')}</ul>`}<div class="quest-footer"><div><strong>¥ ${q.reward}</strong><span>${id === 'repair' ? '另解锁仓库扩建' : '任务报酬'}</span></div>${complete ? '<span class="completion-mark">✓ 已完成</span>' : btn('交付物资', 'quest', ready ? 'primary' : '', `data-id="${id}"`)}</div></article>`;
         }).join('')}</div><p class="content-note">交付时会扣除仓库、背包或安全箱中的所需物资。放进安全箱的任务物品，撤离失败也保留。</p>`;
@@ -400,6 +428,7 @@ function renderHideout() {
     const content = ui().querySelector<HTMLElement>('.content.body-content'); if (content) content.scrollTop = bodyScroll;
     // Like the title dialogs: the keyboard lands in the perk preview (on its cancel button; main.ts keeps Tab inside it).
     if (app.overlay === 'perk') ui().querySelector<HTMLElement>('.perk-modal .perk-cancel')?.focus({ preventScroll: true });
+    if (app.overlay === 'report') ui().querySelector<HTMLElement>('.result [data-action="close"]')?.focus({ preventScroll: true });
 }
 function overlayHtml() {
     if (saveSession.requiresReload && !app.conflict) return `<div class="overlay"><div class="panel modal"><h2>进度已保存，请刷新页面</h2><p>当前页面恢复失败。本页不会再次写入，请导出备份后刷新页面。</p><div class="actions">${btn('导出备份', 'export-save')}${btn('刷新页面', 'refresh')}</div></div></div>`;
@@ -411,6 +440,7 @@ function overlayHtml() {
         return `<div class="overlay"><div class="panel modal"><h2>导入这份存档？</h2><p>现金 ¥ ${(app.pendingImport || app.pendingRecoveryImport!.profile).cash} · 累计出击 ${(app.pendingImport || app.pendingRecoveryImport!.profile).stats.runs} 次</p><p>导入会替换此浏览器中本游戏的进度，两个存档不会合并。请先导出当前存档。</p><div class="actions">${btn('先导出当前存档', 'export-save')}${btn('确认导入', 'confirm-import', 'primary')}${btn('取消', 'close')}</div></div></div>`;
     if (!app.overlay)
         return '';
+    if (app.overlay === 'report') return app.result ? `<div class="overlay">${resultCard(btn('回到站里', 'close', 'primary'), 'role="dialog" aria-modal="true" aria-label="行动报告"')}</div>` : '';
     if (app.overlay === 'gunsmith' && bench) return benchOverlayHtml(bench);
     if (app.overlay === 'shop-leave') return `<div class="overlay"><section class="panel modal"><h2>放弃未结算的清单？</h2><p>待买、待卖和仓库位置会恢复。现金与物资尚未改变。</p><div class="actions">${btn('继续挑选', 'close')}${btn('放弃清单并离开', 'shop-leave-confirm', 'danger')}</div></section></div>`;
     if (app.overlay === 'perk') return perkDialog ? perkOverlayHtml(perkDialog) : '';
@@ -437,6 +467,7 @@ export function retrySettlement(): boolean {
     if (!app.pendingSettlement) return false;
     if (!saved(saveSession.retrySettlement())) { setOverlay('save-error'); return false; }
     if (app.result!.outcome === 'extract') audio.extract(); else audio.death();
+    // This page's own dialog: its result page shows the report, and 「返回水产站」 walks in without a second one.
     changeState('result');
     return true;
 }
@@ -676,8 +707,8 @@ function bind() {
                 void playOpening('replay').then(() => { if (app.state !== 'menu') return; render(); ui().querySelector<HTMLElement>('[data-action="opening"]')?.focus(); });
                 break;
             case 'return':
-                // The yard plays the walk-in with the Runtime's one-time arrival; if it cannot, the tab page still works.
-                if (stationDefault()) void returnToStation().then(ok => { if (!ok && app.state === 'result') changeState('hideout'); });
+                // The fallback result page was this raid's report: the yard only plays the walk-in. If it cannot, the tab page still works.
+                if (stationDefault()) void returnToStation(true).then(ok => { if (!ok && app.state === 'result') changeState('hideout'); });
                 else changeState('hideout');
                 break;
             case 'menu':
@@ -742,6 +773,7 @@ function bind() {
             case 'production-enqueue': expansionAction(draft => enqueueProduction(draft.profile, draft.expansion, id as keyof typeof RECIPES), '材料已支付，生产已排入队列。'); break;
             case 'production-claim': expansionAction(draft => claimProduction(draft.profile, draft.expansion, id, 'stash'), '整批物资已放入仓库。'); break;
             case 'production-cancel': expansionAction(draft => cancelProduction(draft.profile, draft.expansion, id), '材料与现金已退回。'); break;
+            case 'premium-craft': expansionAction(draft => craftPremium(draft.profile, draft.expansion, id) === null, '老栓做好了，已放进仓库。'); break;
             case 'practice-select': expansionAction(draft => { draft.expansion.base.training.attribute = id as 'strength' | 'constitution' | 'technique'; }, '练习项目已更换。'); break;
             case 'charm-equip': expansionAction(draft => equipCharm(draft.profile, draft.expansion, app.selected, app.selectedSource as 'stash' | 'bag' | 'safe'), '护符已佩戴。'); break;
             case 'charm-unequip': expansionAction(draft => unequipCharm(draft.profile, draft.expansion), '护符已收起。'); break;

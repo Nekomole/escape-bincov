@@ -1,6 +1,6 @@
 # 三分支技能树隔离研究（#143）
 
-承接 [提案 #143](https://github.com/xuys2025/escape-bincov/issues/143)，分支 `feat/skills-local-spike`，起点 main `275fafd`，研究与稳定性验证基线为最新 main `cf5845e9ba0b530fe2b8be4bb69c431a8049efa3`。本交付包含48项候选技能、六个机制节点的资源实验及严格检查点，供正式接入前审阅与复核；正式游戏入口、Perk、存档和游戏素材没有接入这些规则。PR与审阅状态由[任务入口](../WORK-QUEUE.md)维护。
+承接 [提案 #143](https://github.com/xuys2025/escape-bincov/issues/143)，分支 `feat/skills-local-spike`，起点 main `275fafd`，研究与稳定性验证基线为最新 main `cf5845e9ba0b530fe2b8be4bb69c431a8049efa3`。本交付包含48项候选技能、六个机制节点的资源实验及严格检查点，供正式接入前审阅与复核；正式游戏入口、Perk、存档和游戏素材没有接入这些规则。PR与审阅状态见原 PR 和[接入计划的交接记录](skill-tree-integration.md#交接记录2026-11-03-按新约定从-handoffmd-和任务清单移入)。
 
 2026-10-29 后续决定：维护者转达开发者已一致同意正式接入，并采纳审阅意见。[正式接入计划](skill-tree-integration.md)记录已定约束、旧角色路径、S0～S7及验收；当前 PR 本轮先完成压弹保护调整，正式玩法尚未接线。以下机制表已按修订更新；末尾113项等记录是修订前历史，最新结果见交接与原 PR。
 
@@ -106,7 +106,7 @@
   本轮另含压弹默认不消耗、任务保留/完成、明确数量/撤销、多堆超额、满包不扣授权、旧研究格式拒读及20枪适用性。
 - [skill-tree-stability.test.ts](../../tests/skill-tree-stability.test.ts)：三项真实反例、全部20种枪械、300套随机合法构筑、嵌套未知字段、200次不规则时间分片与读档对照。
 
-复核命令：`pnpm test`、`pnpm check:ci`、`pnpm package`。本地浏览器试验页和日志放在忽略的 `test-results/`，不属于正式游戏 UI 或生产构建入口。具体最终测试结果、性能量测与制品隔离证据见 [当前交接](../../handoff.md)。
+复核命令：`pnpm test`、`pnpm check:ci`、`pnpm package`。本地浏览器试验页和日志放在忽略的 `test-results/`，不属于正式游戏 UI 或生产构建入口。具体最终测试结果、性能量测与制品隔离证据见 [接入计划的交接记录](skill-tree-integration.md#交接记录2026-11-03-按新约定从-handoffmd-和任务清单移入)。
 
 ## 稳定性复核：已复现并修复的问题
 

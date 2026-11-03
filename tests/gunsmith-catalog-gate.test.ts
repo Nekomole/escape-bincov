@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as D from '../src/domain';
-import { ATTACHMENTS, GUNS, type GunId } from '../src/gunsmith/catalog';
+import { ATTACHMENTS, FACTORY_MAGS, GUNS, factoryMagOf, isPremium, partTier, type GunId } from '../src/gunsmith/catalog';
 import { checkInstall, validateBuild } from '../src/gunsmith/compat';
 import { buildOf, gunWeight, type PartNode } from '../src/gunsmith/instance';
 import { effectiveStats } from '../src/gunsmith/stats';
@@ -30,12 +30,14 @@ function fitted(gun: GunId, id: string): PartNode[] | null {
     return null;
 }
 
-test('twenty guns and a hundred parts, every one an item, nothing else in the catalog', () => {
-    assert.equal(GUN_IDS.length, 20); assert.equal(PART_IDS.length, 100);
+test('twenty guns, a hundred parts and 老栓精工\'s twenty, every one an item, nothing else in the catalog', () => {
+    assert.equal(GUN_IDS.length, 20); assert.equal(PART_IDS.length, 120); assert.equal(PART_IDS.filter(isPremium).length, 20);
     for (const id of GUN_IDS) assert.ok(D.isGun(id) && D.ITEMS[id].kind === 'weapon', id);
     for (const id of PART_IDS) assert.ok(D.isAttachment(id) && D.ITEMS[id].kind === 'attachment', id);
     assert.deepEqual(Object.keys(D.ITEMS).filter(id => D.isGun(id)).sort(), [...GUN_IDS].sort());
-    assert.deepEqual(Object.keys(D.ITEMS).filter(id => D.isAttachment(id)).sort(), [...PART_IDS].sort());
+    // Besides the catalog's parts, the attachment items are the factory magazines that come off at the workbench (M4-07).
+    assert.deepEqual(Object.keys(D.ITEMS).filter(id => D.isAttachment(id) && !factoryMagOf(id)).sort(), [...PART_IDS].sort());
+    assert.deepEqual(Object.keys(D.ITEMS).filter(id => factoryMagOf(id)), Object.values(FACTORY_MAGS));
 });
 
 test('art: every gun in the three outputs with its icons and side view, every part in its outputs with its icon; no placeholder', () => {
@@ -47,14 +49,16 @@ test('art: every gun in the three outputs with its icons and side view, every pa
         // The old three keep their own painted item icons; every other gun has Sol's.
         if (!OLD.includes(gun)) for (const size of ['q24', 'q32']) assert.ok(GUNSMITH_ART[`gs-${gun}-${size}`], `${gun} ${size}`);
     }
+    // 老栓精工's twenty (#28 M4-09) included: Sol's pictures came in with #157.
     for (const id of PART_IDS) {
         const key = (code: string) => Object.keys(GUNSMITH_ART).some(k => k.startsWith(`gs-${id.toLowerCase()}-${code}`));
         for (const code of ['i', 'w', 'q24']) assert.ok(key(code), `${id} ${code}`);
         // Held rear grips are hidden by the glove (M0 review decision 8): only they may go without a held image.
         assert.ok(key('h') || ATTACHMENTS[id].mount === 'grip', `${id} h`);
     }
-    // Wave two's rounds carry Sol's icons too.
+    // Wave two's rounds carry Sol's icons too, and so does 老栓精工's blank.
     for (const id of ['ammo45', 'ammoPDW', 'ammoHeavy']) for (const size of ['q24', 'q32']) assert.ok(GUNSMITH_ART[`gs-${id.toLowerCase()}-${size}`], `${id} ${size}`);
+    assert.ok(GUNSMITH_ART['gs-premiumblank-q24'], 'premiumBlank q24');
 });
 
 test('function and cost: every part changes something and says what it gives and what it costs', () => {
@@ -74,7 +78,12 @@ test('function and cost: every part changes something and says what it gives and
 
 test('acquisition: every gun and part is on 老栓\'s shelf or found in a raid, and the workbench says which', () => {
     const shelf = new Set(D.MERCHANTS.arms.stock);
-    for (const id of PART_IDS) assert.match(sourceOf(id), shelf.has(id) ? /^修理铺有售/ : /^行动中(的高风险处)?可能找到$/, id);
+    // A profile whose rotating shelf (#28 M4-01) is empty of none: each found part says where it is found.
+    const none = { quests: {}, stats: { runs: 0, extracts: 0, kills: 0 } }, rotating = new Set(D.rotationParts(0));
+    for (const id of PART_IDS) assert.match(sourceOf(id, none), shelf.has(id) ? /^修理铺有售/ : rotating.has(id) ? /^修理铺这次的轮换货架有售/ : isPremium(id) ? /^只能找老栓定制 · ¥ \d+，另交一件底料和精工件坯$/ : /^行动中(的高风险处)?可能找到/, id);
+    // Once the ledger quest is done the rare parts come round on the late shelf too (#28 M4-03).
+    const late = { quests: { ledger: true }, stats: { runs: 0, extracts: 0, kills: 0 } }, lateNow = new Set(D.lateParts(0));
+    for (const id of PART_IDS.filter(id => partTier(ATTACHMENTS[id]) === 'rare')) assert.match(sourceOf(id, late), lateNow.has(id) ? /^修理铺这次的后期货架有售/ : /修理铺的后期货架有时也有$/, id);
     // A gun off the shelf is found (D.gunsmithFind's pools: every gun that is an item but those the arms counter stocks).
     const found = new Set<string>(), draw = (values: number[]) => { let i = 0; return () => values[i++]; };
     for (let k = 0; k < 400; k++) for (const rare of [0, 1]) {
